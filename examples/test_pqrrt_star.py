@@ -129,7 +129,6 @@ class PQRRTStar(ci.ICOLAV):
 
             U_d = ownship_state[3]  # Constant desired speed given by the initial own-ship speed
             rrt_solution: dict = self._rrt.grow_towards_goal(ownship_state.tolist(), U_d, [])
-            print("RRT-run completed")
             mapf.plot_rrt_tree(self._rrt.get_tree_as_list_of_dicts(), enc)
 
             # rrt_solution = hf.load_rrt_solution()

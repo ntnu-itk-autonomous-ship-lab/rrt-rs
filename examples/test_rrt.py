@@ -23,7 +23,7 @@ from shapely import strtree
 
 @dataclass
 class RRTParams:
-    max_nodes: int = 2000
+    max_nodes: int = 3000
     max_iter: int = 10000
     iter_between_direct_goal_growth: int = 500
     min_node_dist: float = 15.0
@@ -125,7 +125,6 @@ class RRT(ci.ICOLAV):
 
             U_d = ownship_state[3]  # Constant desired speed given by the initial own-ship speed
             rrt_solution: dict = self._rrt.grow_towards_goal(ownship_state.tolist(), U_d, [])
-            print("RRT-run completed")
             if not rrt_solution:
                 raise RuntimeError("RRT did not find a solution")
 

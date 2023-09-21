@@ -638,7 +638,7 @@ impl RRT {
         let d_0end = ((x0[0] - xend[0]).powi(2) + (x0[1] - xend[1]).powi(2)).sqrt();
         // return false;
 
-        if utils::wrap_angle_to_pmpi(max_psi_diff).abs() * 180.0 / std::f64::consts::PI > 120.0
+        if utils::wrap_angle_to_pmpi(max_psi_diff).abs() * 180.0 / std::f64::consts::PI > 160.0
             && d_0end < 100.0
         {
             // println!(
