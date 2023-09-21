@@ -72,6 +72,7 @@ impl PointDistance for RRTNode {
 
 #[derive(Debug, Clone, FromPyObject, Serialize, Deserialize)]
 pub struct RRTResult {
+    pub waypoints: Vec<[f64; 3]>,
     pub states: Vec<[f64; 6]>,
     pub inputs: Vec<[f64; 3]>,
     pub times: Vec<f64>,
@@ -79,12 +80,13 @@ pub struct RRTResult {
 }
 
 impl RRTResult {
-    pub fn new(solution: (Vec<[f64; 6]>, Vec<[f64; 3]>, Vec<f64>, f64)) -> Self {
+    pub fn new(solution: (Vec<[f64; 3]>, Vec<[f64; 6]>, Vec<[f64; 3]>, Vec<f64>, f64)) -> Self {
         Self {
-            states: solution.0,
-            inputs: solution.1,
-            times: solution.2,
-            cost: solution.3,
+            waypoints: solution.0,
+            states: solution.1,
+            inputs: solution.2,
+            times: solution.3,
+            cost: solution.4,
         }
     }
 
@@ -102,6 +104,7 @@ impl RRTResult {
         let rust_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
         let solution_file = File::open(rust_root.join("data/rrt_result.json")).unwrap();
         let result: RRTResult = serde_json::from_reader(solution_file).unwrap();
+        self.waypoints = result.waypoints;
         self.states = result.states;
         self.inputs = result.inputs;
         self.times = result.times;
@@ -112,23 +115,30 @@ impl RRTResult {
 
 impl ToPyObject for RRTResult {
     fn to_object(&self, py: Python) -> PyObject {
+        let waypoints = PyList::empty(py);
         let states = PyList::empty(py);
         let inputs = PyList::empty(py);
         let times = PyList::empty(py);
-        let n_wps = self.states.len();
-        for i in 0..n_wps {
+        let n_states = self.states.len();
+        for i in 0..n_states {
             // Only the starting root state should have a time of 0.0
             if i > 0 && self.times[i] < 0.0001 {
                 continue;
             }
             states.append(self.states[i].to_object(py)).unwrap();
             times.append(self.times[i].to_object(py)).unwrap();
-            if i < n_wps - 1 {
+            if i < n_states - 1 {
                 inputs.append(self.inputs[i].to_object(py)).unwrap();
             }
         }
+        for wp in self.waypoints.iter() {
+            waypoints.append(wp.to_object(py)).unwrap();
+        }
         let cost = self.cost.to_object(py);
         let result_dict = PyDict::new(py);
+        result_dict
+            .set_item("waypoints", waypoints)
+            .expect("Solution waypoints should be set");
         result_dict
             .set_item("states", states)
             .expect("Solution states should be set");

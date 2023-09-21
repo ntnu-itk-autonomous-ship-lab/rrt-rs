@@ -28,7 +28,7 @@ pub trait Steering {
     fn steer_through_waypoints(
         &mut self,
         xs_start: &Vector6<f64>,
-        waypoints: &Vec<Vector6<f64>>,
+        waypoints: &Vec<Vector3<f64>>,
         U_d: f64,
         acceptance_radius: f64,
         time_step: f64,
@@ -53,7 +53,14 @@ pub trait Steering {
         while wp_idx < n_wps - 1 {
             let (mut xs_array_, u_array_, refs_array_, t_array_, reached) = self.steer(
                 &xs_current,
-                &waypoints[wp_idx + 1].into(),
+                &Vector6::new(
+                    waypoints[wp_idx + 1][0],
+                    waypoints[wp_idx + 1][1],
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                ),
                 U_d,
                 radius,
                 time_step,
@@ -226,10 +233,17 @@ impl FLSHController {
             + Dvv[0]
             + model_params.M[(0, 0)] * (self.K_p_u * U_error + self.K_i_u * self.U_error_int);
         let Fx = utils::saturate(Fx, model_params.Fx_limits[0], model_params.Fx_limits[1]);
-        let Fy: f64 = (model_params.M[(2, 2)] / model_params.l_r)
+        let Fy: f64 = -(model_params.M[(2, 2)] / model_params.l_r)
             * (self.K_p_psi * psi_error - self.K_d_psi * r + self.K_i_psi * self.psi_error_int);
         let Fy = utils::saturate(Fy, model_params.Fy_limits[0], model_params.Fy_limits[1]);
-        let tau: Vector3<f64> = Vector3::new(Fx, Fy, Fy * model_params.l_r);
+        let mut tau: Vector3<f64> = Vector3::new(Fx, Fy, -Fy * model_params.l_r);
+        tau[0] = utils::saturate(tau[0], model_params.Fx_limits[0], model_params.Fx_limits[1]);
+        tau[1] = utils::saturate(tau[1], model_params.Fy_limits[0], model_params.Fy_limits[1]);
+        tau[2] = utils::saturate(
+            tau[2],
+            model_params.Fy_limits[0] * model_params.l_r,
+            model_params.Fy_limits[1] * model_params.l_r,
+        );
 
         // println!(
         //     "tau: {:?} | psi_error: {:.2} | u_diff: {:.2}",

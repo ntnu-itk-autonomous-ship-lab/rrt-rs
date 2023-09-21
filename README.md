@@ -21,7 +21,7 @@ Install these first.
 - 1: Install python dependencies.
 - 2: Install rustup on your computer: https://www.rust-lang.org/tools/install
 - 3: Go into root folder `rrt-rs/` and run `maturin develop`. The rust library is now built and installed as a Python package.
-- 4: Run a test file under `examples/` to check the installation.
+- 4: Run an example under `examples/` to check the installation.
 
 
 ## Future enhancements/todos

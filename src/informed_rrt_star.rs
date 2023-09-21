@@ -345,7 +345,8 @@ impl InformedRRTStar {
     pub fn extract_solution(&self, z: &RRTNode) -> PyResult<RRTResult> {
         let mut z_current = self.bookkeeping_tree.get(&z.clone().id.unwrap()).unwrap();
         let cost = z_current.data().cost;
-        let mut node_states: Vec<[f64; 6]> = vec![z_current.data().clone().state.into()];
+        let speed = (z_current.data().state[3].powi(2) + z_current.data().state[4].powi(2)).sqrt();
+        let mut waypoints: Vec<[f64; 3]> = vec![Vector3::new(z.state[0], z.state[1], speed).into()];
         let mut trajectories: Vec<Vec<[f64; 6]>> =
             vec![z.trajectory.clone().into_iter().map(|x| x.into()).collect()];
         let mut controls: Vec<Vec<[f64; 3]>> =
@@ -353,7 +354,12 @@ impl InformedRRTStar {
         while z_current.parent().is_some() {
             let parent_id = z_current.parent().unwrap();
             let z_parent = self.bookkeeping_tree.get(&parent_id).unwrap();
-            node_states.push(z_parent.data().state.clone().into());
+            let speed =
+                (z_parent.data().state[3].powi(2) + z_parent.data().state[4].powi(2)).sqrt();
+
+            let waypoint: [f64; 3] =
+                Vector3::new(z_parent.data().state[0], z_parent.data().state[1], speed).into();
+            waypoints.push(waypoint);
             trajectories.push(
                 z_parent
                     .data()
@@ -374,7 +380,7 @@ impl InformedRRTStar {
             );
             z_current = z_parent;
         }
-        node_states.reverse();
+        waypoints.reverse();
         let states = trajectories
             .iter()
             .rev()
@@ -388,7 +394,7 @@ impl InformedRRTStar {
             .map(|x| *x)
             .collect::<Vec<[f64; 3]>>();
         let times = Vec::from_iter((0..states.len()).map(|i| i as f64 * self.params.step_size));
-        Ok(RRTResult::new((node_states, inputs, times, cost)))
+        Ok(RRTResult::new((waypoints, states, inputs, times, cost)))
     }
 
     // Prune state nodes from the solution to make the trajectory smoother and more optimal wrt distance
@@ -426,7 +432,7 @@ impl InformedRRTStar {
         //     "Optimized solution has less than 2 states",
         // );
         // states.reverse();
-        *soln = self.steer_through_waypoints(&soln.states)?;
+        *soln = self.steer_through_waypoints(&soln.waypoints)?;
         Ok(())
     }
 
@@ -762,7 +768,7 @@ impl InformedRRTStar {
         ))
     }
 
-    pub fn steer_through_waypoints(&mut self, waypoints: &Vec<[f64; 6]>) -> PyResult<RRTResult> {
+    pub fn steer_through_waypoints(&mut self, waypoints: &Vec<[f64; 3]>) -> PyResult<RRTResult> {
         let n_wps = waypoints.len();
         if n_wps < 2 {
             return Err(PyErr::new::<pyo3::exceptions::PyException, _>(
@@ -774,7 +780,7 @@ impl InformedRRTStar {
             &waypoints
                 .clone()
                 .into_iter()
-                .map(|x| Vector6::from(x))
+                .map(|x| Vector3::from(x))
                 .collect(),
             self.U_d,
             self.params.steering_acceptance_radius,
@@ -790,6 +796,7 @@ impl InformedRRTStar {
                 .collect::<Vec<Vector6<f64>>>(),
         );
         Ok(RRTResult {
+            waypoints: waypoints.clone(),
             states: xs_array.clone().into_iter().map(|x| x.into()).collect(),
             inputs: u_array.clone().into_iter().map(|u| u.into()).collect(),
             times: t_array,
@@ -883,7 +890,7 @@ impl InformedRRTStar {
 
     fn extract_best_solution(&mut self) -> PyResult<RRTResult> {
         let mut opt_soln = self.solutions.iter().fold(
-            RRTResult::new((vec![], vec![], vec![], std::f64::INFINITY)),
+            RRTResult::new((vec![], vec![], vec![], vec![], std::f64::INFINITY)),
             |acc, x| {
                 if x.cost < acc.cost {
                     x.clone()
@@ -998,6 +1005,7 @@ mod tests {
             max_nn_node_dist: 200.0,
         });
         let mut soln = RRTResult {
+            waypoints: vec![],
             states: vec![],
             inputs: vec![],
             times: vec![],

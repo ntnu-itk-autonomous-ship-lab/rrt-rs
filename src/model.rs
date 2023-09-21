@@ -48,8 +48,8 @@ impl TelemetronParams {
         let r_max = 15.0 * PI / 180.0;
         let M_inv = Matrix3::from_partial_diagonal(&[1.0 / 3980.0, 1.0 / 3980.0, 1.0 / 19703.0]);
         Self {
-            draft: 1.0,
-            length: 10.0,
+            draft: 0.5,
+            length: 8.0,
             width: 3.0,
             l_r: 4.0,
             M_inv: M_inv,
@@ -127,7 +127,8 @@ impl ShipModel for Telemetron {
     }
 
     fn dynamics(&self, xs: &Vector6<f64>, tau: &Vector3<f64>) -> Vector6<f64> {
-        let eta: Vector3<f64> = xs.fixed_rows::<3>(0).into();
+        let mut eta: Vector3<f64> = xs.fixed_rows::<3>(0).into();
+        eta[2] = utils::wrap_angle_to_pmpi(eta[2]);
         let nu: Vector3<f64> = xs.fixed_rows::<3>(3).into();
 
         let Cmtrx = utils::Cmtrx(self.params.M, nu);
