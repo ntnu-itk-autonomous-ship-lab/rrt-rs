@@ -13,7 +13,6 @@ Install these first.
 - shapely
 - numpy
 - seacharts: https://github.com/trymte/seacharts
-- colav_evaluation_tool: https://github.com/trymte/colav_evaluation_tool
 - colav_simulator: https://github.com/NTNU-Autoship-Internal/colav_simulator
 
 ## Installation and usage in Python
