@@ -12,6 +12,7 @@ import colav_simulator.common.map_functions as mapf
 import colav_simulator.common.paths as dp
 import colav_simulator.core.colav.colav_interface as ci
 import colav_simulator.core.guidances as guidances
+import colav_simulator.core.models as models
 import colav_simulator.core.stochasticity as stochasticity
 import matplotlib.pyplot as plt
 import numpy as np
@@ -46,13 +47,26 @@ class InformedRRTStarParams:
 
 
 @dataclass
-class RRTPlannerParams:
-    los: guidances.LOSGuidanceParams = guidances.LOSGuidanceParams()
-    rrt: InformedRRTStarParams = InformedRRTStarParams()
+class RRTConfig:
+    params: InformedRRTStarParams = InformedRRTStarParams()
+    model: models.KinematicCSOGParams = models.KinematicCSOGParams()
 
     @classmethod
     def from_dict(cls, config_dict: dict):
-        config = RRTPlannerParams(los=guidances.LOSGuidanceParams.from_dict(config_dict["los"]), rrt=InformedRRTStarParams.from_dict(config_dict["rrt"]))
+        config = RRTConfig(params=InformedRRTStar.from_dict(config_dict["params"]), model=models.KinematicCSOGParams.from_dict(config_dict["model"]))
+
+        return config
+
+
+@dataclass
+class RRTPlannerParams:
+    los: guidances.LOSGuidanceParams = guidances.LOSGuidanceParams()
+    rrt: RRTConfig = RRTConfig()
+
+    @classmethod
+    def from_dict(cls, config_dict: dict):
+        config = RRTPlannerParams(los=guidances.LOSGuidanceParams.from_dict(config_dict["los"]), rrt=RRTConfig.from_dict(config_dict["pq-rrt"]))
+
         return config
 
 

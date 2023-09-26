@@ -21,6 +21,9 @@
 use crate::utils;
 use nalgebra::Vector6;
 use nalgebra::{Matrix3, Vector2, Vector3};
+use pyo3::prelude::*;
+use pyo3::FromPyObject;
+use serde::{Deserialize, Serialize};
 use std::f64::consts::PI;
 
 #[allow(non_snake_case)]
@@ -66,8 +69,8 @@ impl TelemetronParams {
     }
 }
 
+#[derive(FromPyObject, Serialize, Deserialize, Debug, Clone, Copy)]
 #[allow(non_snake_case)]
-#[derive(Debug, Clone, Copy)]
 pub struct KinematicCSOGParams {
     pub draft: f64,
     pub length: f64,
@@ -95,10 +98,17 @@ impl KinematicCSOGParams {
     }
 }
 
+// impl FromPyObject<'_> for KinematicCSOGParams {
+//     fn extract(ob: &PyAny) -> PyResult<Self> {
+//         let params: KinematicCSOGParams = ob.extract()?;
+//         Ok(params)
+//     }
+// }
+
 pub trait ShipModel {
     type Params;
 
-    fn new() -> Self;
+    fn new(params: Self::Params) -> Self;
     fn dynamics(&self, xs: &Vector6<f64>, tau: &Vector3<f64>) -> Vector6<f64>;
     fn erk4_step(&self, dt: f64, xs: &Vector6<f64>, tau: &Vector3<f64>) -> Vector6<f64>;
     fn euler_step(&self, dt: f64, xs: &Vector6<f64>, tau: &Vector3<f64>) -> Vector6<f64>;
@@ -114,7 +124,7 @@ pub struct Telemetron {
 #[allow(non_snake_case)]
 impl ShipModel for Telemetron {
     type Params = TelemetronParams;
-    fn new() -> Self {
+    fn new(params: Self::Params) -> Self {
         Self {
             params: TelemetronParams::new(),
             n_x: 6,
@@ -177,9 +187,9 @@ pub struct KinematicCSOG {
 
 impl ShipModel for KinematicCSOG {
     type Params = KinematicCSOGParams;
-    fn new() -> Self {
+    fn new(params: Self::Params) -> Self {
         Self {
-            params: KinematicCSOGParams::new(),
+            params: params,
             n_x: 3,
             n_u: 2,
         }

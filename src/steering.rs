@@ -139,12 +139,12 @@ impl LOSGuidance {
         let chi_r =
             (-self.K_p * cross_track_error - self.K_i * self.cross_track_error_int).atan2(1.0);
         let psi_d = utils::wrap_angle_to_pmpi(alpha + chi_r);
-        (U_d, psi_d)
+        (psi_d, U_d)
     }
 }
 
 #[allow(non_snake_case)]
-struct FLSHController {
+pub struct FLSHController {
     K_p_u: f64,
     K_i_u: f64,
     K_p_psi: f64,
@@ -196,7 +196,7 @@ impl FLSHController {
     ) -> Vector3<f64> {
         let psi: f64 = utils::wrap_angle_to_pmpi(xs[2]);
         let psi_unwrapped = utils::unwrap_angle(self.psi_prev, psi);
-        let psi_d: f64 = refs.1;
+        let psi_d: f64 = refs.0;
         let psi_d_unwrapped = utils::unwrap_angle(self.psi_d_prev, psi_d);
         let psi_error: f64 = utils::wrap_angle_diff_to_pmpi(psi_d_unwrapped, psi_unwrapped);
         // if (psi_d < 0.0 && psi > 0.0) || (psi_d > 0.0 && psi < 0.0) {
@@ -214,7 +214,7 @@ impl FLSHController {
         self.psi_error_int = utils::wrap_angle_to_pmpi(self.psi_error_int);
 
         let U: f64 = f64::sqrt(xs[3].powi(2) + xs[4].powi(2));
-        let U_d: f64 = refs.0;
+        let U_d: f64 = refs.1;
         let U_error: f64 = U_d - U;
         if self.U_error_int.abs() > self.max_U_error_int {
             self.U_error_int -= U_error * dt;
@@ -256,17 +256,17 @@ impl FLSHController {
 }
 
 pub struct SimpleSteering<M: ShipModel> {
-    los_guidance: LOSGuidance,
-    flsh_controller: FLSHController,
-    ship_model: M,
+    pub los_guidance: LOSGuidance,
+    pub flsh_controller: FLSHController,
+    pub ship_model: M,
 }
 
 impl<M: ShipModel> SimpleSteering<M> {
-    pub fn new() -> SimpleSteering<M> {
+    pub fn new(model_params: <M as ShipModel>::Params) -> SimpleSteering<M> {
         Self {
             los_guidance: LOSGuidance::new(),
             flsh_controller: FLSHController::new(),
-            ship_model: M::new(),
+            ship_model: M::new(model_params),
         }
     }
 }
@@ -395,7 +395,7 @@ mod tests {
 
     #[test]
     pub fn test_steer() -> Result<(), Box<dyn std::error::Error>> {
-        let mut steering = SimpleSteering::<Telemetron>::new();
+        let mut steering = SimpleSteering::<Telemetron>::new(TelemetronParams::new());
         let xs_start = Vector6::new(0.0, 0.0, consts::PI / 2.0, 5.0, 0.0, 0.0);
         let acceptance_radius = 10.0;
         let xs_goal = Vector6::new(100.0, 0.0, 0.0, 0.0, 0.0, 0.0);

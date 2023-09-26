@@ -3,7 +3,7 @@
 //!
 use crate::common::{RRTNode, RRTResult};
 use crate::enc_data::ENCData;
-use crate::model::Telemetron;
+use crate::model::{KinematicCSOG, KinematicCSOGParams};
 use crate::steering::{SimpleSteering, Steering};
 use crate::utils;
 use config::Config;
@@ -81,7 +81,7 @@ pub struct RRTStar {
     pub z_best_parent: RRTNode,
     pub solutions: Vec<RRTResult>, // (states, times, cost) for each solution
     pub params: RRTStarParams,
-    pub steering: SimpleSteering<Telemetron>,
+    pub steering: SimpleSteering<KinematicCSOG>,
     pub xs_start: Vector6<f64>,
     pub xs_goal: Vector6<f64>,
     pub U_d: f64,
@@ -96,14 +96,14 @@ pub struct RRTStar {
 #[pymethods]
 impl RRTStar {
     #[new]
-    pub fn py_new(params: RRTStarParams) -> Self {
+    pub fn py_new(model: KinematicCSOGParams, params: RRTStarParams) -> Self {
         println!("RRT* initialized with params: {:?}", params);
         Self {
             c_best: std::f64::INFINITY,
             z_best_parent: RRTNode::new(Vector6::zeros(), Vec::new(), Vec::new(), 0.0, 0.0, 0.0),
             solutions: Vec::new(),
             params: params.clone(),
-            steering: SimpleSteering::new(),
+            steering: SimpleSteering::new(model),
             xs_start: Vector6::zeros(),
             xs_goal: Vector6::zeros(),
             U_d: 5.0,
@@ -114,6 +114,16 @@ impl RRTStar {
             rng: ChaChaRng::from_entropy(),
             enc: ENCData::py_new(),
         }
+    }
+
+    pub fn update_parameters(&mut self, params: RRTStarParams) -> PyResult<()> {
+        self.params = params.clone();
+        Ok(())
+    }
+
+    pub fn update_model_parameters(&mut self, params: KinematicCSOGParams) -> PyResult<()> {
+        self.steering.ship_model.params = params.clone();
+        Ok(())
     }
 
     #[allow(non_snake_case)]
@@ -911,19 +921,22 @@ mod tests {
 
     #[test]
     fn test_sample() -> PyResult<()> {
-        let mut rrt = RRTStar::py_new(RRTStarParams {
-            max_nodes: 1000,
-            max_iter: 100000,
-            iter_between_direct_goal_growth: 100,
-            min_node_dist: 20.0,
-            goal_radius: 100.0,
-            step_size: 1.0,
-            min_steering_time: 1.0,
-            max_steering_time: 20.0,
-            steering_acceptance_radius: 5.0,
-            gamma: 200.0,
-            max_nn_node_dist: 100.0,
-        });
+        let mut rrt = RRTStar::py_new(
+            KinematicCSOGParams::new(),
+            RRTStarParams {
+                max_nodes: 1000,
+                max_iter: 100000,
+                iter_between_direct_goal_growth: 100,
+                min_node_dist: 20.0,
+                goal_radius: 100.0,
+                step_size: 1.0,
+                min_steering_time: 1.0,
+                max_steering_time: 20.0,
+                steering_acceptance_radius: 5.0,
+                gamma: 200.0,
+                max_nn_node_dist: 100.0,
+            },
+        );
         let z_rand = rrt.sample()?;
         assert_eq!(z_rand.state, Vector6::zeros());
         Ok(())
@@ -932,19 +945,22 @@ mod tests {
     #[test]
     #[allow(non_snake_case)]
     fn test_choose_parent_and_insert() -> PyResult<()> {
-        let mut rrt = RRTStar::py_new(RRTStarParams {
-            max_nodes: 1000,
-            max_iter: 100000,
-            iter_between_direct_goal_growth: 100,
-            min_node_dist: 50.0,
-            goal_radius: 100.0,
-            step_size: 0.1,
-            min_steering_time: 1.0,
-            max_steering_time: 20.0,
-            steering_acceptance_radius: 5.0,
-            gamma: 200.0,
-            max_nn_node_dist: 150.0,
-        });
+        let mut rrt = RRTStar::py_new(
+            KinematicCSOGParams::new(),
+            RRTStarParams {
+                max_nodes: 1000,
+                max_iter: 100000,
+                iter_between_direct_goal_growth: 100,
+                min_node_dist: 50.0,
+                goal_radius: 100.0,
+                step_size: 0.1,
+                min_steering_time: 1.0,
+                max_steering_time: 20.0,
+                steering_acceptance_radius: 5.0,
+                gamma: 200.0,
+                max_nn_node_dist: 150.0,
+            },
+        );
 
         let xs_start = [0.0, 0.0, 0.0, 5.0, 0.0, 0.0];
         let xs_goal = [100.0, 0.0, 0.0, 0.0, 0.0, 0.0];
@@ -981,19 +997,22 @@ mod tests {
 
     #[test]
     fn test_optimize_solution() -> PyResult<()> {
-        let mut rrt = RRTStar::py_new(RRTStarParams {
-            max_nodes: 1700,
-            max_iter: 10000,
-            iter_between_direct_goal_growth: 100,
-            min_node_dist: 30.0,
-            goal_radius: 600.0,
-            step_size: 0.5,
-            min_steering_time: 1.0,
-            max_steering_time: 25.0,
-            steering_acceptance_radius: 5.0,
-            gamma: 1200.0,
-            max_nn_node_dist: 200.0,
-        });
+        let mut rrt = RRTStar::py_new(
+            KinematicCSOGParams::new(),
+            RRTStarParams {
+                max_nodes: 1700,
+                max_iter: 10000,
+                iter_between_direct_goal_growth: 100,
+                min_node_dist: 30.0,
+                goal_radius: 600.0,
+                step_size: 0.5,
+                min_steering_time: 1.0,
+                max_steering_time: 25.0,
+                steering_acceptance_radius: 5.0,
+                gamma: 1200.0,
+                max_nn_node_dist: 200.0,
+            },
+        );
         let mut soln = RRTResult {
             waypoints: vec![],
             states: vec![],
@@ -1014,19 +1033,22 @@ mod tests {
     }
     #[test]
     fn test_grow_towards_goal() -> PyResult<()> {
-        let mut rrt = RRTStar::py_new(RRTStarParams {
-            max_nodes: 2000,
-            max_iter: 10000,
-            iter_between_direct_goal_growth: 100,
-            min_node_dist: 10.0,
-            goal_radius: 10.0,
-            step_size: 0.5,
-            min_steering_time: 1.0,
-            max_steering_time: 15.0,
-            steering_acceptance_radius: 5.0,
-            gamma: 1200.0,
-            max_nn_node_dist: 125.0,
-        });
+        let mut rrt = RRTStar::py_new(
+            KinematicCSOGParams::new(),
+            RRTStarParams {
+                max_nodes: 2000,
+                max_iter: 10000,
+                iter_between_direct_goal_growth: 100,
+                min_node_dist: 10.0,
+                goal_radius: 10.0,
+                step_size: 0.5,
+                min_steering_time: 1.0,
+                max_steering_time: 15.0,
+                steering_acceptance_radius: 5.0,
+                gamma: 1200.0,
+                max_nn_node_dist: 125.0,
+            },
+        );
         let xs_start = [
             6581590.0,
             -33715.0,

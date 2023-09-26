@@ -12,6 +12,7 @@ import colav_simulator.common.map_functions as mapf
 import colav_simulator.common.paths as dp
 import colav_simulator.core.colav.colav_interface as ci
 import colav_simulator.core.guidances as guidances
+import colav_simulator.core.models as models
 import colav_simulator.core.stochasticity as stochasticity
 import matplotlib.pyplot as plt
 import numpy as np
@@ -50,21 +51,34 @@ class PQRRTStarParams:
 
 
 @dataclass
-class RRTPlannerParams:
-    los: guidances.LOSGuidanceParams = guidances.LOSGuidanceParams()
-    rrt: PQRRTStarParams = PQRRTStarParams()
+class RRTConfig:
+    params: PQRRTStarParams = PQRRTStarParams()
+    model: models.KinematicCSOGParams = models.KinematicCSOGParams()
 
     @classmethod
     def from_dict(cls, config_dict: dict):
-        config = RRTPlannerParams(los=guidances.LOSGuidanceParams.from_dict(config_dict["los"]), rrt=PQRRTStarParams.from_dict(config_dict["pq-rrt"]))
+        config = RRTConfig(params=PQRRTStarParams.from_dict(config_dict["params"]), model=models.KinematicCSOGParams.from_dict(config_dict["model"]))
+
+        return config
+
+
+@dataclass
+class RRTPlannerParams:
+    los: guidances.LOSGuidanceParams = guidances.LOSGuidanceParams()
+    rrt: RRTConfig = RRTConfig()
+
+    @classmethod
+    def from_dict(cls, config_dict: dict):
+        config = RRTPlannerParams(los=guidances.LOSGuidanceParams.from_dict(config_dict["los"]), rrt=RRTConfig.from_dict(config_dict["pq-rrt"]))
+
         return config
 
 
 class PQRRTStar(ci.ICOLAV):
-    def __init__(self, params: RRTPlannerParams) -> None:
-        self._rrt_params = params.rrt
-        self._rrt = rrt_star_lib.PQRRTStar(params.rrt)
-        self._los = guidances.LOSGuidance(params.los)
+    def __init__(self, config: RRTPlannerParams) -> None:
+        self._rrt_config = config.rrt
+        self._rrt = rrt_star_lib.PQRRTStar(config.rrt.model, config.rrt.params)
+        self._los = guidances.LOSGuidance(config.los)
 
         self._rrt_inputs: np.ndarray = np.empty(3)
         self._rrt_trajectory: np.ndarray = np.empty(6)
@@ -128,7 +142,7 @@ class PQRRTStar(ci.ICOLAV):
                 mapf.plot_rrt_tree(self._rrt.get_tree_as_list_of_dicts(), enc)
                 mapf.plot_trajectory(self._rrt_waypoints, enc, "orange", marker_type="o")
                 mapf.plot_trajectory(self._rrt_trajectory, enc, "magenta")
-                mapf.plot_dynamic_obstacles(do_list, enc, 100.0, self._rrt_params.step_size)
+                mapf.plot_dynamic_obstacles(do_list, enc, 100.0, self._rrt_config.params.step_size)
                 ship_poly = mapf.create_ship_polygon(ownship_state[0], ownship_state[1], ownship_state[2], kwargs["os_length"], kwargs["os_width"], 1.0, 1.0)
                 enc.draw_polygon(ship_poly, color="pink")
         else:

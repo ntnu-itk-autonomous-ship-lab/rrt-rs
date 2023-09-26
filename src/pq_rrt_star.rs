@@ -3,7 +3,7 @@
 //!
 use crate::common::{RRTNode, RRTResult};
 use crate::enc_data::ENCData;
-use crate::model::Telemetron;
+use crate::model::{KinematicCSOG, KinematicCSOGParams};
 use crate::steering::{SimpleSteering, Steering};
 use crate::utils;
 use config::Config;
@@ -89,7 +89,7 @@ pub struct PQRRTStar {
     pub z_best_parent: RRTNode,
     pub solutions: Vec<RRTResult>, // (states, times, cost) for each solution
     pub params: PQRRTParams,
-    pub steering: SimpleSteering<Telemetron>,
+    pub steering: SimpleSteering<KinematicCSOG>,
     pub xs_start: Vector6<f64>,
     pub xs_goal: Vector6<f64>,
     pub U_d: f64,
@@ -104,14 +104,14 @@ pub struct PQRRTStar {
 #[pymethods]
 impl PQRRTStar {
     #[new]
-    pub fn py_new(params: PQRRTParams) -> Self {
+    pub fn py_new(model: KinematicCSOGParams, params: PQRRTParams) -> Self {
         println!("PQRRTStar initialized with params: {:?}", params);
         Self {
             c_best: std::f64::INFINITY,
             z_best_parent: RRTNode::new(Vector6::zeros(), Vec::new(), Vec::new(), 0.0, 0.0, 0.0),
             solutions: Vec::new(),
             params: params.clone(),
-            steering: SimpleSteering::new(),
+            steering: SimpleSteering::new(model),
             xs_start: Vector6::zeros(),
             xs_goal: Vector6::zeros(),
             U_d: 5.0,
@@ -167,6 +167,11 @@ impl PQRRTStar {
 
     pub fn update_parameters(&mut self, params: PQRRTParams) -> PyResult<()> {
         self.params = params.clone();
+        Ok(())
+    }
+
+    pub fn update_model_parameters(&mut self, params: KinematicCSOGParams) -> PyResult<()> {
+        self.steering.ship_model.params = params.clone();
         Ok(())
     }
 
@@ -997,23 +1002,26 @@ mod tests {
     #[test]
     #[allow(non_snake_case)]
     fn test_ancestry() -> PyResult<()> {
-        let mut rrt = PQRRTStar::py_new(PQRRTParams {
-            max_nodes: 1000,
-            max_iter: 100000,
-            iter_between_direct_goal_growth: 100,
-            min_node_dist: 50.0,
-            goal_radius: 100.0,
-            step_size: 0.1,
-            min_steering_time: 3.0,
-            max_steering_time: 20.0,
-            steering_acceptance_radius: 5.0,
-            gamma: 200.0,
-            max_nn_node_dist: 150.0,
-            max_sample_adjustments: 10,
-            lambda_sample_adjustment: 0.1,
-            safe_distance: 25.0,
-            max_ancestry_level: 1,
-        });
+        let mut rrt = PQRRTStar::py_new(
+            KinematicCSOGParams::new(),
+            PQRRTParams {
+                max_nodes: 1000,
+                max_iter: 100000,
+                iter_between_direct_goal_growth: 100,
+                min_node_dist: 50.0,
+                goal_radius: 100.0,
+                step_size: 0.1,
+                min_steering_time: 3.0,
+                max_steering_time: 20.0,
+                steering_acceptance_radius: 5.0,
+                gamma: 200.0,
+                max_nn_node_dist: 150.0,
+                max_sample_adjustments: 10,
+                lambda_sample_adjustment: 0.1,
+                safe_distance: 25.0,
+                max_ancestry_level: 1,
+            },
+        );
 
         let xs_start = [0.0, 0.0, 0.0, 5.0, 0.0, 0.0];
         let xs_goal = [1000.0, 0.0, 0.0, 0.0, 0.0, 0.0];
@@ -1134,23 +1142,26 @@ mod tests {
     #[test]
     #[allow(non_snake_case)]
     fn test_optimize_solution() -> PyResult<()> {
-        let mut rrt = PQRRTStar::py_new(PQRRTParams {
-            max_nodes: 2500,
-            max_iter: 4000,
-            iter_between_direct_goal_growth: 500,
-            min_node_dist: 30.0,
-            goal_radius: 300.0,
-            step_size: 0.5,
-            min_steering_time: 3.0,
-            max_steering_time: 25.0,
-            steering_acceptance_radius: 5.0,
-            gamma: 1200.0,
-            max_nn_node_dist: 125.0,
-            max_sample_adjustments: 50,
-            lambda_sample_adjustment: 0.3,
-            safe_distance: 0.0,
-            max_ancestry_level: 2,
-        });
+        let mut rrt = PQRRTStar::py_new(
+            KinematicCSOGParams::new(),
+            PQRRTParams {
+                max_nodes: 2500,
+                max_iter: 4000,
+                iter_between_direct_goal_growth: 500,
+                min_node_dist: 30.0,
+                goal_radius: 300.0,
+                step_size: 0.5,
+                min_steering_time: 3.0,
+                max_steering_time: 25.0,
+                steering_acceptance_radius: 5.0,
+                gamma: 1200.0,
+                max_nn_node_dist: 125.0,
+                max_sample_adjustments: 50,
+                lambda_sample_adjustment: 0.3,
+                safe_distance: 0.0,
+                max_ancestry_level: 2,
+            },
+        );
         let mut soln = RRTResult {
             waypoints: vec![],
             states: vec![],
@@ -1173,23 +1184,26 @@ mod tests {
 
     #[test]
     fn test_grow_towards_goal() -> PyResult<()> {
-        let mut rrt = PQRRTStar::py_new(PQRRTParams {
-            max_nodes: 500,
-            max_iter: 4000,
-            iter_between_direct_goal_growth: 500,
-            min_node_dist: 30.0,
-            goal_radius: 300.0,
-            step_size: 0.5,
-            min_steering_time: 3.0,
-            max_steering_time: 25.0,
-            steering_acceptance_radius: 5.0,
-            gamma: 1200.0,
-            max_nn_node_dist: 125.0,
-            max_sample_adjustments: 50,
-            lambda_sample_adjustment: 0.3,
-            safe_distance: 0.0,
-            max_ancestry_level: 2,
-        });
+        let mut rrt = PQRRTStar::py_new(
+            KinematicCSOGParams::new(),
+            PQRRTParams {
+                max_nodes: 500,
+                max_iter: 4000,
+                iter_between_direct_goal_growth: 500,
+                min_node_dist: 30.0,
+                goal_radius: 300.0,
+                step_size: 0.5,
+                min_steering_time: 3.0,
+                max_steering_time: 25.0,
+                steering_acceptance_radius: 5.0,
+                gamma: 1200.0,
+                max_nn_node_dist: 125.0,
+                max_sample_adjustments: 50,
+                lambda_sample_adjustment: 0.3,
+                safe_distance: 0.0,
+                max_ancestry_level: 2,
+            },
+        );
         let xs_start = [
             6581590.0,
             -33715.0,
