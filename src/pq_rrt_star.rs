@@ -4,7 +4,7 @@
 use crate::common::{RRTNode, RRTResult};
 use crate::enc_data::ENCData;
 use crate::model::{KinematicCSOG, KinematicCSOGParams};
-use crate::steering::{SimpleSteering, Steering};
+use crate::steering::{LOSGuidanceParams, SimpleSteering, Steering};
 use crate::utils;
 use config::Config;
 use id_tree::InsertBehavior::*;
@@ -104,14 +104,13 @@ pub struct PQRRTStar {
 #[pymethods]
 impl PQRRTStar {
     #[new]
-    pub fn py_new(model: KinematicCSOGParams, params: PQRRTParams) -> Self {
-        println!("PQRRTStar initialized with params: {:?}", params);
+    pub fn py_new(los: LOSGuidanceParams, model: KinematicCSOGParams, params: PQRRTParams) -> Self {
         Self {
             c_best: std::f64::INFINITY,
             z_best_parent: RRTNode::new(Vector6::zeros(), Vec::new(), Vec::new(), 0.0, 0.0, 0.0),
             solutions: Vec::new(),
             params: params.clone(),
-            steering: SimpleSteering::new(model),
+            steering: SimpleSteering::new(los, model),
             xs_start: Vector6::zeros(),
             xs_goal: Vector6::zeros(),
             U_d: 5.0,
@@ -175,6 +174,11 @@ impl PQRRTStar {
         Ok(())
     }
 
+    pub fn update_los_parameters(&mut self, params: LOSGuidanceParams) -> PyResult<()> {
+        self.steering.los_guidance.params = params.clone();
+        Ok(())
+    }
+
     pub fn transfer_enc_hazards(&mut self, hazards: &PyAny) -> PyResult<()> {
         self.enc.transfer_enc_hazards(hazards)
     }
@@ -219,7 +223,8 @@ impl PQRRTStar {
         // println!("Goal state: {:?}", self.xs_goal);
         // println!("U_d: {:?}", U_d);
         // println!("Do list: {:?}", do_list);
-
+        println!("Model: {:?}", self.steering.ship_model.params);
+        println!("LOS: {:?}", self.steering.los_guidance.params);
         self.c_best = std::f64::INFINITY;
         self.solutions = Vec::new();
 
@@ -1003,6 +1008,7 @@ mod tests {
     #[allow(non_snake_case)]
     fn test_ancestry() -> PyResult<()> {
         let mut rrt = PQRRTStar::py_new(
+            LOSGuidanceParams::new(),
             KinematicCSOGParams::new(),
             PQRRTParams {
                 max_nodes: 1000,
@@ -1143,6 +1149,7 @@ mod tests {
     #[allow(non_snake_case)]
     fn test_optimize_solution() -> PyResult<()> {
         let mut rrt = PQRRTStar::py_new(
+            LOSGuidanceParams::new(),
             KinematicCSOGParams::new(),
             PQRRTParams {
                 max_nodes: 2500,
@@ -1185,6 +1192,7 @@ mod tests {
     #[test]
     fn test_grow_towards_goal() -> PyResult<()> {
         let mut rrt = PQRRTStar::py_new(
+            LOSGuidanceParams::new(),
             KinematicCSOGParams::new(),
             PQRRTParams {
                 max_nodes: 500,

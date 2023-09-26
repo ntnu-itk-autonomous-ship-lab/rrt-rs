@@ -4,7 +4,7 @@
 use crate::common::{RRTNode, RRTResult};
 use crate::enc_data::ENCData;
 use crate::model::{KinematicCSOG, KinematicCSOGParams};
-use crate::steering::{SimpleSteering, Steering};
+use crate::steering::{LOSGuidanceParams, SimpleSteering, Steering};
 use crate::utils;
 use config::Config;
 use id_tree::InsertBehavior::*;
@@ -96,14 +96,18 @@ pub struct InformedRRTStar {
 #[pymethods]
 impl InformedRRTStar {
     #[new]
-    pub fn py_new(model: KinematicCSOGParams, params: InformedRRTParams) -> Self {
+    pub fn py_new(
+        los: LOSGuidanceParams,
+        model: KinematicCSOGParams,
+        params: InformedRRTParams,
+    ) -> Self {
         println!("InformedRRTStar initialized with params: {:?}", params);
         Self {
             c_best: std::f64::INFINITY,
             z_best_parent: RRTNode::new(Vector6::zeros(), Vec::new(), Vec::new(), 0.0, 0.0, 0.0),
             solutions: Vec::new(),
             params: params.clone(),
-            steering: SimpleSteering::new(model),
+            steering: SimpleSteering::new(los, model),
             xs_start: Vector6::zeros(),
             xs_goal: Vector6::zeros(),
             U_d: 5.0,
@@ -123,6 +127,11 @@ impl InformedRRTStar {
 
     pub fn update_model_parameters(&mut self, params: KinematicCSOGParams) -> PyResult<()> {
         self.steering.ship_model.params = params.clone();
+        Ok(())
+    }
+
+    pub fn update_los_parameters(&mut self, params: LOSGuidanceParams) -> PyResult<()> {
+        self.steering.los_guidance.params = params.clone();
         Ok(())
     }
 
@@ -208,6 +217,8 @@ impl InformedRRTStar {
         // println!("Goal state: {:?}", self.xs_goal);
         // println!("U_d: {:?}", U_d);
         // println!("Do list: {:?}", do_list);
+        println!("Model: {:?}", self.steering.ship_model.params);
+        println!("LOS: {:?}", self.steering.los_guidance.params);
 
         self.c_best = std::f64::INFINITY;
         self.solutions = Vec::new();
@@ -932,6 +943,7 @@ mod tests {
     #[test]
     fn test_sample() -> PyResult<()> {
         let mut rrt = InformedRRTStar::py_new(
+            LOSGuidanceParams::new(),
             KinematicCSOGParams::new(),
             InformedRRTParams {
                 max_nodes: 1000,
@@ -956,6 +968,7 @@ mod tests {
     #[allow(non_snake_case)]
     fn test_choose_parent_and_insert() -> PyResult<()> {
         let mut rrt = InformedRRTStar::py_new(
+            LOSGuidanceParams::new(),
             KinematicCSOGParams::new(),
             InformedRRTParams {
                 max_nodes: 1000,
@@ -1008,6 +1021,7 @@ mod tests {
     #[test]
     fn test_optimize_solution() -> PyResult<()> {
         let mut rrt = InformedRRTStar::py_new(
+            LOSGuidanceParams::new(),
             KinematicCSOGParams::new(),
             InformedRRTParams {
                 max_nodes: 1700,
@@ -1044,6 +1058,7 @@ mod tests {
     #[test]
     fn test_grow_towards_goal() -> PyResult<()> {
         let mut rrt = InformedRRTStar::py_new(
+            LOSGuidanceParams::new(),
             KinematicCSOGParams::new(),
             InformedRRTParams {
                 max_nodes: 2000,

@@ -26,7 +26,7 @@ from shapely import strtree
 @dataclass
 class PQRRTStarParams:
     max_nodes: int = 2000
-    max_iter: int = 35000
+    max_iter: int = 15000
     iter_between_direct_goal_growth: int = 500
     min_node_dist: float = 20.0
     goal_radius: float = 500.0
@@ -53,18 +53,25 @@ class PQRRTStarParams:
 @dataclass
 class RRTConfig:
     params: PQRRTStarParams = PQRRTStarParams()
-    model: models.KinematicCSOGParams = models.KinematicCSOGParams()
+    model: models.KinematicCSOGParams = models.KinematicCSOGParams(
+        name="KinematicCSOG", draft=0.5, length=10.0, width=3.0, T_chi=10.0, T_U=7.0, r_max=np.deg2rad(4), U_min=0.0, U_max=15.0
+    )
+    los: guidances.LOSGuidanceParams = guidances.LOSGuidanceParams(K_p=0.035, K_i=0.0, pass_angle_threshold=90.0, R_a=25.0, max_cross_track_error_int=30.0)
 
     @classmethod
     def from_dict(cls, config_dict: dict):
-        config = RRTConfig(params=PQRRTStarParams.from_dict(config_dict["params"]), model=models.KinematicCSOGParams.from_dict(config_dict["model"]))
+        config = RRTConfig(
+            params=PQRRTStarParams.from_dict(config_dict["params"]),
+            model=models.KinematicCSOGParams.from_dict(config_dict["model"]),
+            los=guidances.LOSGuidanceParams.from_dict(config_dict["los"]),
+        )
 
         return config
 
 
 @dataclass
 class RRTPlannerParams:
-    los: guidances.LOSGuidanceParams = guidances.LOSGuidanceParams()
+    los: guidances.LOSGuidanceParams = guidances.LOSGuidanceParams(K_p=0.035, K_i=0.0, pass_angle_threshold=90.0, R_a=25.0, max_cross_track_error_int=30.0)
     rrt: RRTConfig = RRTConfig()
 
     @classmethod
@@ -77,7 +84,7 @@ class RRTPlannerParams:
 class PQRRTStar(ci.ICOLAV):
     def __init__(self, config: RRTPlannerParams) -> None:
         self._rrt_config = config.rrt
-        self._rrt = rrt_star_lib.PQRRTStar(config.rrt.model, config.rrt.params)
+        self._rrt = rrt_star_lib.PQRRTStar(config.rrt.los, config.rrt.model, config.rrt.params)
         self._los = guidances.LOSGuidance(config.los)
 
         self._rrt_inputs: np.ndarray = np.empty(3)
@@ -175,7 +182,7 @@ class PQRRTStar(ci.ICOLAV):
             return {
                 "nominal_trajectory": self._rrt_trajectory,
                 "nominal_inputs": self._rrt_inputs,
-                "params": self._rrt_params,
+                "params": self._rrt_config.params,
                 "t": self._t_prev,
             }
 

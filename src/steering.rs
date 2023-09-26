@@ -5,6 +5,9 @@ use crate::model::{KinematicCSOG, ShipModel, Telemetron, TelemetronParams};
 use crate::utils;
 use nalgebra::Vector3;
 use nalgebra::Vector6;
+use pyo3::prelude::*;
+use pyo3::FromPyObject;
+use serde::{Deserialize, Serialize};
 use std::f64;
 
 #[allow(non_snake_case)]
@@ -91,25 +94,37 @@ pub trait Steering {
     }
 }
 
-/// Simple LOS guidance specialized for following 1 waypoint segment
 #[allow(non_snake_case)]
-pub struct LOSGuidance {
+#[derive(FromPyObject, Serialize, Deserialize, Debug, Clone, Copy)]
+pub struct LOSGuidanceParams {
     K_p: f64,
     K_i: f64,
     max_cross_track_error_int: f64,
-    cross_track_error_int: f64,
-    cross_track_error_int_threshold: f64,
 }
 
-#[allow(non_snake_case)]
-impl LOSGuidance {
+impl LOSGuidanceParams {
     pub fn new() -> Self {
         Self {
             K_p: 0.035,
             K_i: 0.0,
             max_cross_track_error_int: 30.0,
+        }
+    }
+}
+
+/// Simple LOS guidance specialized for following 1 waypoint segment
+#[allow(non_snake_case)]
+pub struct LOSGuidance {
+    pub params: LOSGuidanceParams,
+    pub cross_track_error_int: f64,
+}
+
+#[allow(non_snake_case)]
+impl LOSGuidance {
+    pub fn new(params: LOSGuidanceParams) -> Self {
+        Self {
+            params: params,
             cross_track_error_int: 0.0,
-            cross_track_error_int_threshold: 5.0,
         }
     }
 
@@ -129,15 +144,16 @@ impl LOSGuidance {
         let cross_track_error = -(xs_now[0] - xs_goal[0]) * f64::sin(alpha)
             + (xs_now[1] - xs_goal[1]) * f64::cos(alpha);
 
-        if cross_track_error.abs() <= self.cross_track_error_int_threshold {
+        if cross_track_error.abs() <= self.cross_track_error_int {
             self.cross_track_error_int += cross_track_error * dt;
         }
-        if self.cross_track_error_int.abs() > self.max_cross_track_error_int {
+        if self.cross_track_error_int.abs() > self.cross_track_error_int {
             self.cross_track_error_int -= cross_track_error * dt;
         }
 
-        let chi_r =
-            (-self.K_p * cross_track_error - self.K_i * self.cross_track_error_int).atan2(1.0);
+        let chi_r = (-self.params.K_p * cross_track_error
+            - self.params.K_i * self.cross_track_error_int)
+            .atan2(1.0);
         let psi_d = utils::wrap_angle_to_pmpi(alpha + chi_r);
         (psi_d, U_d)
     }
@@ -262,9 +278,12 @@ pub struct SimpleSteering<M: ShipModel> {
 }
 
 impl<M: ShipModel> SimpleSteering<M> {
-    pub fn new(model_params: <M as ShipModel>::Params) -> SimpleSteering<M> {
+    pub fn new(
+        los_params: LOSGuidanceParams,
+        model_params: <M as ShipModel>::Params,
+    ) -> SimpleSteering<M> {
         Self {
-            los_guidance: LOSGuidance::new(),
+            los_guidance: LOSGuidance::new(los_params),
             flsh_controller: FLSHController::new(),
             ship_model: M::new(model_params),
         }
@@ -358,6 +377,7 @@ impl Steering for SimpleSteering<KinematicCSOG> {
         let mut xs_next = xs_start.clone();
         let mut reached_goal = false;
         //println!("xs_start: {:?} | xs_goal: {:?}", xs_start, xs_goal);
+        self.ship_model.reset();
         while time <= max_steering_time {
             let refs: (f64, f64) = self
                 .los_guidance
@@ -395,7 +415,8 @@ mod tests {
 
     #[test]
     pub fn test_steer() -> Result<(), Box<dyn std::error::Error>> {
-        let mut steering = SimpleSteering::<Telemetron>::new(TelemetronParams::new());
+        let mut steering =
+            SimpleSteering::<Telemetron>::new(LOSGuidanceParams::new(), TelemetronParams::new());
         let xs_start = Vector6::new(0.0, 0.0, consts::PI / 2.0, 5.0, 0.0, 0.0);
         let acceptance_radius = 10.0;
         let xs_goal = Vector6::new(100.0, 0.0, 0.0, 0.0, 0.0, 0.0);

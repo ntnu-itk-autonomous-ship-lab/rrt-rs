@@ -12,6 +12,7 @@ import colav_simulator.common.map_functions as mapf
 import colav_simulator.common.paths as dp
 import colav_simulator.core.colav.colav_interface as ci
 import colav_simulator.core.guidances as guidances
+import colav_simulator.core.models as models
 import colav_simulator.core.stochasticity as stochasticity
 import matplotlib.pyplot as plt
 import numpy as np
@@ -46,21 +47,40 @@ class RRTParams:
 
 
 @dataclass
-class RRTPlannerParams:
-    los: guidances.LOSGuidanceParams = guidances.LOSGuidanceParams()
-    rrt: RRTParams = RRTParams()
+class RRTConfig:
+    params: RRTParams = RRTParams()
+    model: models.KinematicCSOGParams = models.KinematicCSOGParams(
+        name="KinematicCSOG", draft=0.5, length=10.0, width=3.0, T_chi=7.0, T_U=7.0, r_max=np.deg2rad(4), U_min=0.0, U_max=15.0
+    )
+    los: guidances.LOSGuidanceParams = guidances.LOSGuidanceParams(K_p=0.01, K_i=0.0, pass_angle_threshold=90.0, R_a=25.0, max_cross_track_error_int=30.0)
 
     @classmethod
     def from_dict(cls, config_dict: dict):
-        config = RRTPlannerParams(los=guidances.LOSGuidanceParams.from_dict(config_dict["los"]), rrt=RRTParams.from_dict(config_dict["rrt"]))
+        config = RRTConfig(
+            params=RRTParams.from_dict(config_dict["params"]),
+            model=models.KinematicCSOGParams.from_dict(config_dict["model"]),
+            los=guidances.LOSGuidanceParams.from_dict(config_dict["los"]),
+        )
+
+        return config
+
+
+@dataclass
+class RRTPlannerParams:
+    los: guidances.LOSGuidanceParams = guidances.LOSGuidanceParams()
+    rrt: RRTConfig = RRTConfig()
+
+    @classmethod
+    def from_dict(cls, config_dict: dict):
+        config = RRTPlannerParams(los=guidances.LOSGuidanceParams.from_dict(config_dict["los"]), rrt=RRTConfig.from_dict(config_dict["rrt"]))
         return config
 
 
 class RRT(ci.ICOLAV):
-    def __init__(self, params: RRTPlannerParams) -> None:
-        self._rrt_params = params.rrt
-        self._rrt = rrt_star_lib.RRT(params.rrt)
-        self._los = guidances.LOSGuidance(params.los)
+    def __init__(self, config: RRTPlannerParams) -> None:
+        self._rrt_config = config.rrt
+        self._rrt = rrt_star_lib.RRT(config.rrt.los, config.rrt.model, config.rrt.params)
+        self._los = guidances.LOSGuidance(config.los)
 
         self._rrt_inputs: np.ndarray = np.empty(3)
         self._rrt_trajectory: np.ndarray = np.empty(6)
@@ -125,7 +145,7 @@ class RRT(ci.ICOLAV):
             if enc is not None:
                 mapf.plot_trajectory(self._rrt_waypoints, enc, "orange", marker_type="o")
                 mapf.plot_trajectory(self._rrt_trajectory, enc, "magenta")
-                mapf.plot_dynamic_obstacles(do_list, enc, 100.0, self._rrt_params.step_size)
+                mapf.plot_dynamic_obstacles(do_list, enc, 100.0, self._rrt_config.params.step_size)
                 ship_poly = mapf.create_ship_polygon(ownship_state[0], ownship_state[1], ownship_state[2], kwargs["os_length"], kwargs["os_width"], 1.0, 1.0)
                 enc.draw_polygon(ship_poly, color="pink")
         else:
@@ -151,14 +171,14 @@ class RRT(ci.ICOLAV):
             return {
                 "nominal_trajectory": np.zeros((6, 1)),
                 "nominal_inputs": np.zeros((3, 1)),
-                "params": self._rrt_params,
+                "params": self._rrt_config.params,
                 "t": self._t_prev,
             }
         else:
             return {
                 "nominal_trajectory": self._rrt_trajectory,
                 "nominal_inputs": self._rrt_inputs,
-                "params": self._rrt_params,
+                "params": self._rrt_config.params,
                 "t": self._t_prev,
             }
 

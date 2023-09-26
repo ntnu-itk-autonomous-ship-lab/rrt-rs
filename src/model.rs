@@ -109,9 +109,9 @@ pub trait ShipModel {
     type Params;
 
     fn new(params: Self::Params) -> Self;
-    fn dynamics(&self, xs: &Vector6<f64>, tau: &Vector3<f64>) -> Vector6<f64>;
-    fn erk4_step(&self, dt: f64, xs: &Vector6<f64>, tau: &Vector3<f64>) -> Vector6<f64>;
-    fn euler_step(&self, dt: f64, xs: &Vector6<f64>, tau: &Vector3<f64>) -> Vector6<f64>;
+    fn dynamics(&mut self, xs: &Vector6<f64>, tau: &Vector3<f64>) -> Vector6<f64>;
+    fn erk4_step(&mut self, dt: f64, xs: &Vector6<f64>, tau: &Vector3<f64>) -> Vector6<f64>;
+    fn euler_step(&mut self, dt: f64, xs: &Vector6<f64>, tau: &Vector3<f64>) -> Vector6<f64>;
     fn params(&self) -> Self::Params;
 }
 
@@ -136,7 +136,7 @@ impl ShipModel for Telemetron {
         self.params
     }
 
-    fn dynamics(&self, xs: &Vector6<f64>, tau: &Vector3<f64>) -> Vector6<f64> {
+    fn dynamics(&mut self, xs: &Vector6<f64>, tau: &Vector3<f64>) -> Vector6<f64> {
         let mut eta: Vector3<f64> = xs.fixed_rows::<3>(0).into();
         eta[2] = utils::wrap_angle_to_pmpi(eta[2]);
         let nu: Vector3<f64> = xs.fixed_rows::<3>(3).into();
@@ -152,7 +152,7 @@ impl ShipModel for Telemetron {
         xs_dot
     }
 
-    fn erk4_step(&self, dt: f64, xs: &Vector6<f64>, tau: &Vector3<f64>) -> Vector6<f64> {
+    fn erk4_step(&mut self, dt: f64, xs: &Vector6<f64>, tau: &Vector3<f64>) -> Vector6<f64> {
         let k1: Vector6<f64> = self.dynamics(xs, tau);
         let k2: Vector6<f64> = self.dynamics(&(xs + dt * k1 / 2.0), tau);
         let k3: Vector6<f64> = self.dynamics(&(xs + dt * k2 / 2.0), tau);
@@ -167,7 +167,7 @@ impl ShipModel for Telemetron {
         xs_new
     }
 
-    fn euler_step(&self, dt: f64, xs: &Vector6<f64>, tau: &Vector3<f64>) -> Vector6<f64> {
+    fn euler_step(&mut self, dt: f64, xs: &Vector6<f64>, tau: &Vector3<f64>) -> Vector6<f64> {
         let mut xs_new: Vector6<f64> = xs + dt * self.dynamics(xs, tau);
         // println!("xs_new: {:?}", xs_new);
         xs_new[2] = utils::wrap_angle_to_pmpi(xs_new[2]);
@@ -183,6 +183,15 @@ pub struct KinematicCSOG {
     pub params: KinematicCSOGParams,
     pub n_x: usize,
     pub n_u: usize,
+    pub chi_d_prev: f64,
+    pub chi_prev: f64,
+}
+
+impl KinematicCSOG {
+    pub fn reset(&mut self) {
+        self.chi_d_prev = 0.0;
+        self.chi_prev = 0.0;
+    }
 }
 
 impl ShipModel for KinematicCSOG {
@@ -192,6 +201,8 @@ impl ShipModel for KinematicCSOG {
             params: params,
             n_x: 3,
             n_u: 2,
+            chi_d_prev: 0.0,
+            chi_prev: 0.0,
         }
     }
 
@@ -200,18 +211,24 @@ impl ShipModel for KinematicCSOG {
     }
 
     #[allow(non_snake_case)]
-    fn dynamics(&self, xs: &Vector6<f64>, tau: &Vector3<f64>) -> Vector6<f64> {
+    fn dynamics(&mut self, xs: &Vector6<f64>, tau: &Vector3<f64>) -> Vector6<f64> {
         let chi_d = tau[0];
         let U_d = tau[1];
         let mut xs_dot: Vector6<f64> = Vector6::zeros();
+
+        let chi_d_unwrapped = utils::unwrap_angle(self.chi_d_prev, chi_d);
+        let chi_unwrapped = utils::unwrap_angle(self.chi_prev, xs[2]);
+        let chi_diff = utils::wrap_angle_diff_to_pmpi(chi_d_unwrapped, chi_unwrapped);
+        self.chi_d_prev = chi_d;
+        self.chi_prev = xs[2];
         xs_dot[0] = xs[3] * f64::cos(xs[2]);
         xs_dot[1] = xs[3] * f64::sin(xs[2]);
-        xs_dot[2] = (chi_d - xs[2]) / self.params.T_chi;
+        xs_dot[2] = chi_diff / self.params.T_chi;
         xs_dot[3] = (U_d - xs[3]) / self.params.T_U;
         xs_dot
     }
 
-    fn erk4_step(&self, dt: f64, xs: &Vector6<f64>, tau: &Vector3<f64>) -> Vector6<f64> {
+    fn erk4_step(&mut self, dt: f64, xs: &Vector6<f64>, tau: &Vector3<f64>) -> Vector6<f64> {
         let k1: Vector6<f64> = self.dynamics(xs, tau);
         let k2: Vector6<f64> = self.dynamics(&(xs + dt * k1 / 2.0), tau);
         let k3: Vector6<f64> = self.dynamics(&(xs + dt * k2 / 2.0), tau);
@@ -229,7 +246,7 @@ impl ShipModel for KinematicCSOG {
         xs_new
     }
 
-    fn euler_step(&self, dt: f64, xs: &Vector6<f64>, tau: &Vector3<f64>) -> Vector6<f64> {
+    fn euler_step(&mut self, dt: f64, xs: &Vector6<f64>, tau: &Vector3<f64>) -> Vector6<f64> {
         let mut xs_new: Vector6<f64> = xs + dt * self.dynamics(xs, tau);
         // println!("xs_new: {:?}", xs_new);
 
