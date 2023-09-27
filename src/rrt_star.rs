@@ -247,7 +247,6 @@ impl RRTStar {
             if self.is_collision_free(&xs_array)
                 && t_new > self.params.min_steering_time
                 && !self.is_too_close_to_neighbours(&xs_new, &None)
-                && !self.went_full_loop_backwards(&xs_array)
             {
                 let path_length = utils::compute_path_length(&xs_array);
                 z_new = RRTNode::new(
@@ -524,10 +523,7 @@ impl RRTStar {
             self.steer(&z, &z_goal_, max_steering_time, 5.0)?;
         let x_new: Vector6<f64> = xs_array.last().copied().unwrap();
 
-        if !(self.is_collision_free(&xs_array)
-            && t_new > self.params.min_steering_time
-            && !self.went_full_loop_backwards(&xs_array)
-            && reached)
+        if !(self.is_collision_free(&xs_array) && t_new > self.params.min_steering_time && reached)
         {
             return Ok(false);
         }
@@ -615,7 +611,6 @@ impl RRTStar {
                 z_new.time + t_new,
             );
             if self.is_collision_free(&xs_array)
-                && !self.went_full_loop_backwards(&xs_array)
                 && !self.is_too_close_to_neighbours(&xs_new_near, &Some(vec![z_near_id.clone()]))
                 && t_new > self.params.min_steering_time
                 && reached
@@ -710,7 +705,6 @@ impl RRTStar {
             if self.is_collision_free(&xs_array)
                 && t_new > self.params.min_steering_time
                 && !self.is_too_close_to_neighbours(&xs_new, &None)
-                && !self.went_full_loop_backwards(&xs_array)
                 && reached
             {
                 let path_length = utils::compute_path_length(&xs_array);
@@ -723,37 +717,6 @@ impl RRTStar {
             }
         }
         Ok((z_new_, z_parent))
-    }
-
-    pub fn went_full_loop_backwards(&self, xs_array: &Vec<Vector6<f64>>) -> bool {
-        let n_states = xs_array.len();
-        if n_states < 2 {
-            return false;
-        }
-        let x0 = xs_array[0];
-        let xend = xs_array[n_states - 1];
-        let psi_diffs = xs_array
-            .iter()
-            .map(|x| utils::wrap_angle_diff_to_pmpi(x[2], x0[2]).abs())
-            .collect::<Vec<f64>>();
-        let max_psi_diff = *psi_diffs
-            .iter()
-            .max_by(|x, y| x.partial_cmp(y).unwrap())
-            .unwrap();
-        let d_0end = ((x0[0] - xend[0]).powi(2) + (x0[1] - xend[1]).powi(2)).sqrt();
-        // return false;
-
-        if utils::wrap_angle_to_pmpi(max_psi_diff).abs() * 180.0 / std::f64::consts::PI > 160.0
-            && d_0end < 100.0
-        {
-            // println!(
-            //     "Max psi diff: {} | d_0end: {}",
-            //     utils::wrap_angle_to_pmpi(max_psi_diff) * 180.0 / std::f64::consts::PI,
-            //     d_0end
-            // );
-            return true;
-        }
-        false
     }
 
     pub fn steer(

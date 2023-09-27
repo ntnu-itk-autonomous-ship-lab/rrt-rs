@@ -27,12 +27,12 @@ from shapely import strtree
 class RRTParams:
     max_nodes: int = 3000
     max_iter: int = 50000
-    iter_between_direct_goal_growth: int = 500
-    min_node_dist: float = 20.0
-    goal_radius: float = 500.0
+    iter_between_direct_goal_growth: int = 250
+    min_node_dist: float = 10.0
+    goal_radius: float = 700.0
     step_size: float = 0.5
     min_steering_time: float = 5.0
-    max_steering_time: float = 30.0
+    max_steering_time: float = 20.0
     steering_acceptance_radius: float = 15.0
     max_nn_node_dist: float = 120.0
     gamma: float = 1200.0
@@ -50,9 +50,9 @@ class RRTParams:
 class RRTConfig:
     params: RRTParams = RRTParams()
     model: models.KinematicCSOGParams = models.KinematicCSOGParams(
-        name="KinematicCSOG", draft=0.5, length=10.0, width=3.0, T_chi=7.0, T_U=7.0, r_max=np.deg2rad(4), U_min=0.0, U_max=15.0
+        name="KinematicCSOG", draft=0.5, length=10.0, width=3.0, T_chi=10.0, T_U=7.0, r_max=np.deg2rad(4), U_min=0.0, U_max=15.0
     )
-    los: guidances.LOSGuidanceParams = guidances.LOSGuidanceParams(K_p=0.01, K_i=0.0, pass_angle_threshold=90.0, R_a=25.0, max_cross_track_error_int=30.0)
+    los: guidances.LOSGuidanceParams = guidances.LOSGuidanceParams(K_p=0.035, K_i=0.0, pass_angle_threshold=90.0, R_a=25.0, max_cross_track_error_int=30.0)
 
     @classmethod
     def from_dict(cls, config_dict: dict):

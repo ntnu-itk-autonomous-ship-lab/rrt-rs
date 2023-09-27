@@ -25,11 +25,11 @@ from shapely import strtree
 
 @dataclass
 class PQRRTStarParams:
-    max_nodes: int = 2000
-    max_iter: int = 15000
-    iter_between_direct_goal_growth: int = 500
-    min_node_dist: float = 20.0
-    goal_radius: float = 500.0
+    max_nodes: int = 3000
+    max_iter: int = 25000
+    iter_between_direct_goal_growth: int = 250
+    min_node_dist: float = 10.0
+    goal_radius: float = 700.0
     step_size: float = 0.5
     min_steering_time: float = 5.0
     max_steering_time: float = 20.0
@@ -39,7 +39,7 @@ class PQRRTStarParams:
     max_sample_adjustments: int = 100
     lambda_sample_adjustment: float = 4.0
     safe_distance: float = 0.0
-    max_ancestry_level: int = 1
+    max_ancestry_level: int = 2
 
     @classmethod
     def from_dict(cls, config_dict: dict):
@@ -175,7 +175,7 @@ class PQRRTStar(ci.ICOLAV):
             return {
                 "nominal_trajectory": np.zeros((6, 1)),
                 "nominal_inputs": np.zeros((3, 1)),
-                "params": self._rrt_params,
+                "params": self._rrt_config.params,
                 "t": self._t_prev,
             }
         else:
