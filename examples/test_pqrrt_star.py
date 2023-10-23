@@ -145,7 +145,7 @@ class PQRRTStar(ci.ICOLAV):
                 if n_samples > 0:
                     solution_times.append(time_elapsed)
 
-                if aa == 10000 and enc is not None:
+                if aa == 0 and enc is not None:
                     # rrt_solution = hf.load_rrt_solution()
                     times = np.array(rrt_solution["times"])
                     n_samples = len(times)
@@ -165,7 +165,7 @@ class PQRRTStar(ci.ICOLAV):
                     mapf.plot_trajectory(self._rrt_waypoints, enc, "orange", marker_type="o")
                     # mapf.plot_trajectory(self._rrt_trajectory, enc, "magenta")
                     mapf.plot_dynamic_obstacles(do_list, enc, 100.0, self._rrt_config.params.step_size)
-                    ship_poly = mapf.create_ship_polygon(ownship_state[0], ownship_state[1], ownship_state[2], kwargs["os_length"], kwargs["os_width"], 10.0, 5.0)
+                    ship_poly = mapf.create_ship_polygon(ownship_state[0], ownship_state[1], ownship_state[2], kwargs["os_length"], kwargs["os_width"], 10.0, 10.0)
                     enc.draw_polygon(ship_poly, color="yellow")
                     enc.draw_circle(center=(goal_state[1], goal_state[0]), radius=30.0, color="magenta", alpha=0.3)
 
@@ -243,14 +243,14 @@ if __name__ == "__main__":
         iter_between_direct_goal_growth=500,
         min_node_dist=10.0,
         goal_radius=700.0,
-        step_size=0.5,
+        step_size=1.0,
         min_steering_time=5.0,
         max_steering_time=15.0,
         steering_acceptance_radius=10.0,
-        max_nn_node_dist=75.0,
+        max_nn_node_dist=120.0,
         gamma=1200.0,
         max_sample_adjustments=100,
-        lambda_sample_adjustment=1.0,
+        lambda_sample_adjustment=5.0,
         safe_distance=0.0,
         max_ancestry_level=2,
     )

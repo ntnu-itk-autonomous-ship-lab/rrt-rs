@@ -152,18 +152,12 @@ impl ENCData {
             LineString(
                 xs_array
                     .iter()
-                    .step_by(4)
+                    .step_by(2)
                     .map(|x| coord! {x: x[0], y: x[1]})
                     .collect(),
             )
         } else {
-            LineString(
-                xs_array
-                    .iter()
-                    .step_by(0)
-                    .map(|x| coord! {x: x[0], y: x[1]})
-                    .collect(),
-            )
+            LineString(xs_array.iter().map(|x| coord! {x: x[0], y: x[1]}).collect())
         };
         let intersect = self.intersects_with_linestring(&traj_linestring);
         intersect
