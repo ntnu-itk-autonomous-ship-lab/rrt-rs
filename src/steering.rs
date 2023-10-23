@@ -70,7 +70,7 @@ pub trait Steering {
                 max_steering_time,
             );
             let last_psi_diff = xs_array_.last().unwrap()[2] - waypoints[wp_idx + 1][2];
-            reached_last = reached && last_psi_diff.abs() < 3.0 * 180.0 / f64::consts::PI;
+            reached_last = reached; // && last_psi_diff.abs() < 10.0 * 180.0 / f64::consts::PI;
             xs_current = xs_array_.last().unwrap().clone().into();
             wp_idx += 1;
             xs_array_.pop();

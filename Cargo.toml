@@ -10,13 +10,13 @@ name = "rrt_star_lib"
 crate-type = ["cdylib"]
 
 [build-dependencies]
-pyo3-build-config = "0.19.1"
+pyo3-build-config = "0.20"
 
 [dependencies]
 serde_json = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 config = "0.13"
-pyo3 = { version = "0.19", features = ["auto-initialize"] }
+pyo3 = { version = "0.20", features = ["auto-initialize"] }
 rand = "0.8"
 nalgebra = "0.32"
 rstar = "0.11"

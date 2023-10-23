@@ -123,6 +123,21 @@ impl PQRRTStar {
         }
     }
 
+    pub fn reset(&mut self, seed: Option<u64>) {
+        self.c_best = std::f64::INFINITY;
+        self.z_best_parent = RRTNode::new(Vector6::zeros(), Vec::new(), Vec::new(), 0.0, 0.0, 0.0);
+        self.solutions = Vec::new();
+        self.num_nodes = 0;
+        self.num_iter = 0;
+        self.rtree = RTree::new();
+        self.bookkeeping_tree = Tree::new();
+        if let Some(seed) = seed {
+            self.rng = ChaChaRng::seed_from_u64(seed);
+        } else {
+            self.rng = ChaChaRng::from_entropy();
+        }
+    }
+
     #[allow(non_snake_case)]
     pub fn set_speed_reference(&mut self, U_d: f64) -> PyResult<()> {
         Ok(self.U_d = U_d)
@@ -162,6 +177,10 @@ impl PQRRTStar {
         let xs_goal_vec = xs_goal.extract::<Vec<f64>>()?;
         self.xs_goal = Vector6::from_vec(xs_goal_vec);
         Ok(())
+    }
+
+    pub fn seed_rng(&mut self, seed: u64) {
+        self.rng = ChaChaRng::seed_from_u64(seed);
     }
 
     pub fn update_parameters(&mut self, params: PQRRTParams) -> PyResult<()> {
@@ -214,28 +233,38 @@ impl PQRRTStar {
         ownship_state: &PyList,
         U_d: f64,
         do_list: &PyList,
+        initialized: bool,
+        return_on_first_solution: bool,
         py: Python<'_>,
     ) -> PyResult<PyObject> {
         let start = Instant::now();
-        self.set_speed_reference(U_d)?;
-        self.set_init_state(ownship_state)?;
         // println!("Ownship state: {:?}", ownship_state);
         // println!("Goal state: {:?}", self.xs_goal);
         // println!("U_d: {:?}", U_d);
         // println!("Do list: {:?}", do_list);
         println!("Model: {:?}", self.steering.ship_model.params);
         println!("LOS: {:?}", self.steering.los_guidance.params);
-        self.c_best = std::f64::INFINITY;
-        self.solutions = Vec::new();
 
+        if !initialized {
+            self.set_speed_reference(U_d)?;
+            self.set_init_state(ownship_state)?;
+        }
         let mut z_new = self.get_root_node();
         self.num_iter = 0;
         let goal_attempt_steering_time = 10.0 * 60.0;
         while self.num_nodes < self.params.max_nodes && self.num_iter < self.params.max_iter {
-            self.attempt_direct_goal_growth(goal_attempt_steering_time)?;
+            if self.attempt_direct_goal_growth(goal_attempt_steering_time)?
+                && return_on_first_solution
+            {
+                break;
+            }
 
             if self.goal_reachable(&z_new) {
-                self.attempt_goal_insertion(&z_new, self.params.max_steering_time)?;
+                if self.attempt_goal_insertion(&z_new, self.params.max_steering_time)?
+                    && return_on_first_solution
+                {
+                    break;
+                }
             }
 
             z_new = RRTNode::default();
@@ -826,7 +855,7 @@ impl PQRRTStar {
             self.U_d,
             self.params.steering_acceptance_radius,
             self.params.step_size,
-            10.0 * self.params.max_steering_time,
+            30.0 * self.params.max_steering_time,
         );
         assert_eq!(reached_last, true);
 

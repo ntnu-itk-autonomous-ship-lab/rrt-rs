@@ -5,6 +5,7 @@
 
     Author: Trym Tengesdal
 """
+import time
 from dataclasses import asdict, dataclass
 from typing import Optional
 
@@ -37,7 +38,7 @@ class PQRRTStarParams:
     max_nn_node_dist: float = 120.0
     gamma: float = 1200.0
     max_sample_adjustments: int = 100
-    lambda_sample_adjustment: float = 4.0
+    lambda_sample_adjustment: float = 0.1
     safe_distance: float = 0.0
     max_ancestry_level: int = 2
 
@@ -118,16 +119,56 @@ class PQRRTStar(ci.ICOLAV):
             self._t_prev = t
             self._map_origin = ownship_state[:2]
             self._initialized = True
-            relevant_grounding_hazards = mapf.extract_relevant_grounding_hazards_as_union(self._min_depth, enc, buffer=None)
+            relevant_grounding_hazards = mapf.extract_relevant_grounding_hazards_as_union(self._min_depth, enc, buffer=5.0, show_plots=True)
             self._geometry_tree, _ = mapf.fill_rtree_with_geometries(relevant_grounding_hazards)
             safe_sea_triangulation = mapf.create_safe_sea_triangulation(enc, self._min_depth, show_plots=False)
             self._rrt.transfer_enc_hazards(relevant_grounding_hazards[0])
             self._rrt.transfer_safe_sea_triangulation(safe_sea_triangulation)
-            self._rrt.set_init_state(ownship_state.tolist())
             self._rrt.set_goal_state(goal_state.tolist())
 
-            U_d = ownship_state[3]  # Constant desired speed given by the initial own-ship speed
-            rrt_solution: dict = self._rrt.grow_towards_goal(ownship_state.tolist(), U_d, [])
+            solution_times = []
+            n_mc = 100
+            for aa in range(n_mc):
+                print(f"Monte Carlo iteration {aa+1}/{n_mc}")
+                time_now = time.time()
+                self._rrt.reset(aa)
+
+                U_d = ownship_state[3]  # Constant desired speed given by the initial own-ship speed
+                rrt_solution: dict = self._rrt.grow_towards_goal(
+                    ownship_state=ownship_state.tolist(), U_d=U_d, do_list=[], initialized=False, return_on_first_solution=True
+                )
+
+                time_elapsed = time.time() - time_now
+                # rrt_solution = hf.load_rrt_solution()
+                times = np.array(rrt_solution["times"])
+                n_samples = len(times)
+                if n_samples > 0:
+                    solution_times.append(time_elapsed)
+
+                if aa == 10000 and enc is not None:
+                    # rrt_solution = hf.load_rrt_solution()
+                    times = np.array(rrt_solution["times"])
+                    n_samples = len(times)
+                    if n_samples == 0:
+                        raise RuntimeError("RRT did not find a solution")
+                    self._rrt_trajectory = np.zeros((6, n_samples))
+                    self._rrt_inputs = np.zeros((3, n_samples - 1))
+                    n_wps = len(rrt_solution["waypoints"])
+                    self._rrt_waypoints = np.zeros((3, n_wps))
+                    for k in range(n_wps):
+                        self._rrt_waypoints[:, k] = np.array(rrt_solution["waypoints"][k])
+                    for k in range(n_samples):
+                        self._rrt_trajectory[:, k] = np.array(rrt_solution["states"][k])
+                        if k < n_samples - 1:
+                            self._rrt_inputs[:, k] = np.array(rrt_solution["inputs"][k])
+                    mapf.plot_rrt_tree(self._rrt.get_tree_as_list_of_dicts(), enc)
+                    mapf.plot_trajectory(self._rrt_waypoints, enc, "orange", marker_type="o")
+                    # mapf.plot_trajectory(self._rrt_trajectory, enc, "magenta")
+                    mapf.plot_dynamic_obstacles(do_list, enc, 100.0, self._rrt_config.params.step_size)
+                    ship_poly = mapf.create_ship_polygon(ownship_state[0], ownship_state[1], ownship_state[2], kwargs["os_length"], kwargs["os_width"], 10.0, 5.0)
+                    enc.draw_polygon(ship_poly, color="yellow")
+                    enc.draw_circle(center=(goal_state[1], goal_state[0]), radius=30.0, color="magenta", alpha=0.3)
+
             # rrt_solution = hf.load_rrt_solution()
             times = np.array(rrt_solution["times"])
             n_samples = len(times)
@@ -195,7 +236,26 @@ class PQRRTStar(ci.ICOLAV):
 
 
 if __name__ == "__main__":
-    rrt = PQRRTStar(RRTPlannerParams())
+    params = RRTPlannerParams()
+    params.rrt.params = PQRRTStarParams(
+        max_nodes=3000,
+        max_iter=25000,
+        iter_between_direct_goal_growth=500,
+        min_node_dist=10.0,
+        goal_radius=700.0,
+        step_size=0.5,
+        min_steering_time=5.0,
+        max_steering_time=15.0,
+        steering_acceptance_radius=10.0,
+        max_nn_node_dist=75.0,
+        gamma=1200.0,
+        max_sample_adjustments=100,
+        lambda_sample_adjustment=1.0,
+        safe_distance=0.0,
+        max_ancestry_level=2,
+    )
+
+    rrt = PQRRTStar(params)
 
     scenario_file = dp.scenarios / "rl_scenario.yaml"
     scenario_generator = ScenarioGenerator()

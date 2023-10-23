@@ -148,8 +148,23 @@ impl ENCData {
     }
 
     pub fn intersects_with_trajectory(&self, xs_array: &Vec<Vector6<f64>>) -> bool {
-        let traj_linestring =
-            LineString(xs_array.iter().map(|x| coord! {x: x[0], y: x[1]}).collect());
+        let traj_linestring = if xs_array.len() > 50 {
+            LineString(
+                xs_array
+                    .iter()
+                    .step_by(4)
+                    .map(|x| coord! {x: x[0], y: x[1]})
+                    .collect(),
+            )
+        } else {
+            LineString(
+                xs_array
+                    .iter()
+                    .step_by(0)
+                    .map(|x| coord! {x: x[0], y: x[1]})
+                    .collect(),
+            )
+        };
         let intersect = self.intersects_with_linestring(&traj_linestring);
         intersect
     }
