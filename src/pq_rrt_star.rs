@@ -183,21 +183,6 @@ impl PQRRTStar {
         self.rng = ChaChaRng::seed_from_u64(seed);
     }
 
-    pub fn update_parameters(&mut self, params: PQRRTParams) -> PyResult<()> {
-        self.params = params.clone();
-        Ok(())
-    }
-
-    pub fn update_model_parameters(&mut self, params: KinematicCSOGParams) -> PyResult<()> {
-        self.steering.ship_model.params = params.clone();
-        Ok(())
-    }
-
-    pub fn update_los_parameters(&mut self, params: LOSGuidanceParams) -> PyResult<()> {
-        self.steering.los_guidance.params = params.clone();
-        Ok(())
-    }
-
     pub fn transfer_enc_hazards(&mut self, hazards: &PyAny) -> PyResult<()> {
         self.enc.transfer_enc_hazards(hazards)
     }
@@ -852,10 +837,8 @@ impl PQRRTStar {
                 .into_iter()
                 .map(|x| Vector3::from(x))
                 .collect(),
-            self.U_d,
-            self.params.steering_acceptance_radius,
+            2.0 * self.params.steering_acceptance_radius,
             self.params.step_size,
-            30.0 * self.params.max_steering_time,
         );
         assert_eq!(reached_last, true);
 
@@ -1149,10 +1132,10 @@ mod tests {
                 iter_between_direct_goal_growth: 500,
                 min_node_dist: 30.0,
                 goal_radius: 300.0,
-                step_size: 0.5,
+                step_size: 1.0,
                 min_steering_time: 3.0,
                 max_steering_time: 25.0,
-                steering_acceptance_radius: 5.0,
+                steering_acceptance_radius: 10.0,
                 gamma: 1200.0,
                 max_nn_node_dist: 125.0,
                 max_sample_adjustments: 50,
@@ -1171,6 +1154,7 @@ mod tests {
         rrt.enc.load_hazards_from_json()?;
         soln.load_from_json()?;
         println!("soln length: {}", soln.states.len());
+        rrt.xs_start = soln.states[0].clone().into();
         rrt.optimize_solution(&mut soln)?;
         println!("optimized soln length: {}", soln.states.len());
         // soln = rrt.steer_through_solution(&soln)?;
@@ -1241,7 +1225,7 @@ mod tests {
 
             let do_list = Vec::<[f64; 6]>::new().into_py(py);
             let do_list = do_list.as_ref(py).downcast::<PyList>().unwrap();
-            let result = rrt.grow_towards_goal(xs_start_py, 4.0, do_list, py)?;
+            let result = rrt.grow_towards_goal(xs_start_py, 4.0, do_list, false, false, py)?;
             let pydict = result.as_ref(py).downcast::<PyDict>().unwrap();
             println!("rrtresult states: {:?}", pydict.get_item("states"));
             Ok(())

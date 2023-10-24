@@ -116,27 +116,27 @@ impl RRT {
         }
     }
 
-    pub fn update_parameters(&mut self, params: RRTParams) -> PyResult<()> {
-        self.params = params.clone();
-        Ok(())
-    }
-
-    pub fn update_model_parameters(&mut self, params: KinematicCSOGParams) -> PyResult<()> {
-        self.steering.ship_model.params = params.clone();
-        Ok(())
-    }
-
-    pub fn update_los_parameters(&mut self, params: LOSGuidanceParams) -> PyResult<()> {
-        self.steering.los_guidance.params = params.clone();
-        Ok(())
+    pub fn reset(&mut self, seed: Option<u64>) {
+        self.c_best = std::f64::INFINITY;
+        self.z_best_parent = RRTNode::new(Vector6::zeros(), Vec::new(), Vec::new(), 0.0, 0.0, 0.0);
+        self.solutions = Vec::new();
+        self.num_nodes = 0;
+        self.num_iter = 0;
+        self.rtree = RTree::new();
+        self.bookkeeping_tree = Tree::new();
+        if let Some(seed) = seed {
+            self.rng = ChaChaRng::seed_from_u64(seed);
+        } else {
+            self.rng = ChaChaRng::from_entropy();
+        }
     }
 
     #[allow(non_snake_case)]
-    fn set_speed_reference(&mut self, U_d: f64) -> PyResult<()> {
+    pub fn set_speed_reference(&mut self, U_d: f64) -> PyResult<()> {
         Ok(self.U_d = U_d)
     }
 
-    fn set_init_state(&mut self, xs_start: &PyList) -> PyResult<()> {
+    pub fn set_init_state(&mut self, xs_start: &PyList) -> PyResult<()> {
         let xs_start_vec = xs_start.extract::<Vec<f64>>()?;
         self.xs_start = Vector6::from_vec(xs_start_vec);
 
@@ -158,7 +158,7 @@ impl RRT {
             cost: 0.0,
             d2land: 0.0,
             state: self.xs_start.clone(),
-            trajectory: Vec::new(),
+            trajectory: vec![self.xs_start.clone()],
             controls: Vec::new(),
             time: 0.0,
         });
@@ -166,10 +166,14 @@ impl RRT {
         Ok(())
     }
 
-    fn set_goal_state(&mut self, xs_goal: &PyList) -> PyResult<()> {
+    pub fn set_goal_state(&mut self, xs_goal: &PyList) -> PyResult<()> {
         let xs_goal_vec = xs_goal.extract::<Vec<f64>>()?;
         self.xs_goal = Vector6::from_vec(xs_goal_vec);
         Ok(())
+    }
+
+    pub fn seed_rng(&mut self, seed: u64) {
+        self.rng = ChaChaRng::seed_from_u64(seed);
     }
 
     fn transfer_enc_hazards(&mut self, hazards: &PyAny) -> PyResult<()> {
@@ -204,11 +208,11 @@ impl RRT {
         ownship_state: &PyList,
         U_d: f64,
         do_list: &PyList,
+        initialized: bool,
+        return_on_first_solution: bool,
         py: Python<'_>,
     ) -> PyResult<PyObject> {
         let start = Instant::now();
-        self.set_speed_reference(U_d)?;
-        self.set_init_state(ownship_state)?;
         // println!("Ownship state: {:?}", ownship_state);
         // println!("Goal state: {:?}", self.xs_goal);
         // println!("U_d: {:?}", U_d);
@@ -216,19 +220,27 @@ impl RRT {
         println!("Model: {:?}", self.steering.ship_model.params);
         println!("LOS: {:?}", self.steering.los_guidance.params);
 
-        self.c_best = std::f64::INFINITY;
-        self.solutions = Vec::new();
-
+        if !initialized {
+            self.set_speed_reference(U_d)?;
+            self.set_init_state(ownship_state)?;
+        }
         let mut z_new = self.get_root_node();
         self.num_iter = 0;
         let goal_attempt_steering_time = 10.0 * 60.0;
         while self.num_nodes < self.params.max_nodes && self.num_iter < self.params.max_iter {
-            self.attempt_direct_goal_growth(goal_attempt_steering_time)?;
-
-            if self.goal_reachable(&z_new) {
-                self.attempt_goal_insertion(&z_new, self.params.max_steering_time)?;
+            if self.attempt_direct_goal_growth(goal_attempt_steering_time)?
+                && return_on_first_solution
+            {
+                break;
             }
 
+            if self.goal_reachable(&z_new) {
+                if self.attempt_goal_insertion(&z_new, self.params.max_steering_time)?
+                    && return_on_first_solution
+                {
+                    break;
+                }
+            }
             z_new = RRTNode::default();
             let z_rand = self.sample()?;
 
@@ -682,10 +694,8 @@ impl RRT {
                 .into_iter()
                 .map(|x| Vector3::from(x))
                 .collect(),
-            self.U_d,
-            self.params.steering_acceptance_radius,
+            3.0 * self.params.steering_acceptance_radius,
             self.params.step_size,
-            10.0 * self.params.max_steering_time,
         );
         assert_eq!(reached_last, true);
 
@@ -901,8 +911,10 @@ mod tests {
         rrt.enc.load_hazards_from_json()?;
         soln.load_from_json()?;
         println!("soln length: {}", soln.states.len());
+        rrt.xs_start = soln.states[0].clone().into();
         rrt.optimize_solution(&mut soln)?;
         println!("optimized soln length: {}", soln.states.len());
+        // soln = rrt.steer_through_solution(&soln)?;
         Python::with_gil(|py| -> PyResult<()> {
             let _soln_py = soln.to_object(py);
             Ok(())
@@ -965,7 +977,7 @@ mod tests {
 
             let do_list = Vec::<[f64; 6]>::new().into_py(py);
             let do_list = do_list.as_ref(py).downcast::<PyList>().unwrap();
-            let result = rrt.grow_towards_goal(xs_start_py, 6.0, do_list, py)?;
+            let result = rrt.grow_towards_goal(xs_start_py, 6.0, do_list, false, false, py)?;
             let pydict = result.as_ref(py).downcast::<PyDict>().unwrap();
             println!("rrtresult states: {:?}", pydict.get_item("states"));
             Ok(())

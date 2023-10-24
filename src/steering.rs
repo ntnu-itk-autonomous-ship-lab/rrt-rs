@@ -3,8 +3,8 @@
 //!
 use crate::model::{KinematicCSOG, ShipModel, Telemetron, TelemetronParams};
 use crate::utils;
-use nalgebra::Vector3;
 use nalgebra::Vector6;
+use nalgebra::{distance, Vector2, Vector3};
 use pyo3::prelude::*;
 use pyo3::FromPyObject;
 use serde::{Deserialize, Serialize};
@@ -32,66 +32,15 @@ pub trait Steering {
         &mut self,
         xs_start: &Vector6<f64>,
         waypoints: &Vec<Vector3<f64>>,
-        U_d: f64,
         acceptance_radius: f64,
         time_step: f64,
-        max_steering_time: f64,
     ) -> (
         Vec<Vector6<f64>>,
         Vec<Vector3<f64>>,
         Vec<(f64, f64)>,
         Vec<f64>,
         bool,
-    ) {
-        let radius = acceptance_radius;
-        let mut t_array: Vec<f64> = Vec::new();
-        let mut xs_array: Vec<Vector6<f64>> = Vec::new();
-        let mut u_array: Vec<Vector3<f64>> = Vec::new();
-        let mut refs_array: Vec<(f64, f64)> = Vec::new();
-        let mut reached_last = false;
-        let n_wps = waypoints.len();
-        assert_eq!(n_wps > 1, true);
-        let mut xs_current = xs_start.clone();
-        let mut wp_idx = 0;
-        while wp_idx < n_wps - 1 {
-            let (mut xs_array_, u_array_, refs_array_, t_array_, reached) = self.steer(
-                &xs_current,
-                &Vector6::new(
-                    waypoints[wp_idx + 1][0],
-                    waypoints[wp_idx + 1][1],
-                    0.0,
-                    0.0,
-                    0.0,
-                    0.0,
-                ),
-                U_d,
-                radius,
-                time_step,
-                max_steering_time,
-            );
-            let last_psi_diff = xs_array_.last().unwrap()[2] - waypoints[wp_idx + 1][2];
-            reached_last = reached; // && last_psi_diff.abs() < 10.0 * 180.0 / f64::consts::PI;
-            xs_current = xs_array_.last().unwrap().clone().into();
-            wp_idx += 1;
-            xs_array_.pop();
-            xs_array.extend(xs_array_);
-            u_array.extend(u_array_);
-            refs_array.extend(refs_array_);
-            t_array.extend(
-                t_array_
-                    .iter()
-                    .map(|t| {
-                        if t_array.len() > 0 {
-                            t + t_array.last().unwrap().clone()
-                        } else {
-                            *t
-                        }
-                    })
-                    .collect::<Vec<f64>>(),
-            );
-        }
-        (xs_array, u_array, refs_array, t_array, reached_last)
-    }
+    );
 }
 
 #[allow(non_snake_case)]
@@ -350,6 +299,90 @@ impl Steering for SimpleSteering<Telemetron> {
         //println!("xs_next: {:?} | time: {:.2}", xs_next, time);
         (xs_array, u_array, refs_array, t_array, reached_goal)
     }
+
+    fn steer_through_waypoints(
+        &mut self,
+        xs_start: &Vector6<f64>,
+        waypoints: &Vec<Vector3<f64>>,
+        acceptance_radius: f64,
+        time_step: f64,
+    ) -> (
+        Vec<Vector6<f64>>,
+        Vec<Vector3<f64>>,
+        Vec<(f64, f64)>,
+        Vec<f64>,
+        bool,
+    ) {
+        let radius = acceptance_radius;
+        let mut t_array: Vec<f64> = Vec::new();
+        let mut xs_array: Vec<Vector6<f64>> = Vec::new();
+        let mut u_array: Vec<Vector3<f64>> = Vec::new();
+        let mut refs_array: Vec<(f64, f64)> = Vec::new();
+        let mut reached_last = false;
+        let n_wps = waypoints.len();
+        assert_eq!(n_wps > 1, true);
+        let mut xs_current = xs_start.clone();
+        let mut wp_idx = 0;
+        self.los_guidance.reset();
+        self.flsh_controller.reset();
+        let mut time = 0.0;
+        while wp_idx < n_wps - 1 {
+            let wp_prev = Vector6::new(
+                waypoints[wp_idx][0],
+                waypoints[wp_idx][1],
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+            );
+            let wp = Vector6::new(
+                waypoints[wp_idx + 1][0],
+                waypoints[wp_idx + 1][1],
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+            );
+            let U_d_seg = waypoints[wp_idx + 1][2];
+
+            let refs: (f64, f64) =
+                self.los_guidance
+                    .compute_refs(&xs_current, &wp_prev, &wp, U_d_seg, time_step);
+
+            let tau: Vector3<f64> = self.flsh_controller.compute_inputs(
+                &refs,
+                &xs_current,
+                time_step,
+                &self.ship_model.params(),
+            );
+            xs_current = self.ship_model.erk4_step(time_step, &xs_current, &tau);
+
+            refs_array.push(refs);
+            u_array.push(tau);
+            t_array.push(time.clone());
+            time += time_step;
+
+            xs_array.push(xs_current);
+            // Break if inside final waypoint acceptance radius
+            let dist2wp_vec = Vector2::new(wp[0] - xs_current[0], wp[1] - xs_current[1]);
+            let L_wp_seg = Vector2::new(wp[0] - wp_prev[0], wp[1] - wp_prev[1]).normalize();
+            let dist2wp = dist2wp_vec.norm();
+            let segment_passed =
+                L_wp_seg.dot(&dist2wp_vec.normalize()) < f64::cos(utils::deg2rad(90.0));
+            if dist2wp <= acceptance_radius || segment_passed {
+                wp_idx += 1;
+            }
+        }
+        let dist2last_wp = ((waypoints.last().unwrap()[0] - xs_array.last().unwrap()[0]).powi(2)
+            + (waypoints.last().unwrap()[1] - xs_array.last().unwrap()[1]).powi(2))
+        .sqrt();
+        reached_last = dist2last_wp <= radius;
+        println!(
+            "acceptance_radius: {:.2} | d2last_wp: {:.2} | reached_last: {:?}",
+            radius, dist2last_wp, reached_last
+        );
+        (xs_array, u_array, refs_array, t_array, reached_last)
+    }
 }
 
 #[allow(non_snake_case)]
@@ -393,9 +426,9 @@ impl Steering for SimpleSteering<KinematicCSOG> {
 
             xs_array.push(xs_next);
             // Break if inside final waypoint acceptance radius
-            let dist2goal =
-                ((xs_goal[0] - xs_next[0]).powi(2) + (xs_goal[1] - xs_next[1]).powi(2)).sqrt();
-            if dist2goal < acceptance_radius {
+            let dist2goal_vec = Vector2::new(xs_goal[0] - xs_next[0], xs_goal[1] - xs_next[1]);
+            let dist2goal = dist2goal_vec.norm();
+            if dist2goal <= acceptance_radius {
                 reached_goal = true;
                 // refs_array.push(refs);
                 // u_array.push(tau);
@@ -405,6 +438,92 @@ impl Steering for SimpleSteering<KinematicCSOG> {
         }
         //println!("xs_next: {:?} | time: {:.2}", xs_next, time);
         (xs_array, u_array, refs_array, t_array, reached_goal)
+    }
+
+    fn steer_through_waypoints(
+        &mut self,
+        xs_start: &Vector6<f64>,
+        waypoints: &Vec<Vector3<f64>>,
+        acceptance_radius: f64,
+        time_step: f64,
+    ) -> (
+        Vec<Vector6<f64>>,
+        Vec<Vector3<f64>>,
+        Vec<(f64, f64)>,
+        Vec<f64>,
+        bool,
+    ) {
+        let radius = acceptance_radius;
+        let mut t_array: Vec<f64> = Vec::new();
+        let mut xs_array: Vec<Vector6<f64>> = Vec::new();
+        let mut u_array: Vec<Vector3<f64>> = Vec::new();
+        let mut refs_array: Vec<(f64, f64)> = Vec::new();
+        let mut reached_last = false;
+        let n_wps = waypoints.len();
+        assert_eq!(n_wps > 1, true);
+        let mut xs_current = xs_start.clone();
+        let mut wp_idx = 0;
+        self.los_guidance.reset();
+        self.ship_model.reset();
+        let mut time = 0.0;
+        while wp_idx < n_wps - 1 {
+            let wp_prev = Vector6::new(
+                waypoints[wp_idx][0],
+                waypoints[wp_idx][1],
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+            );
+            let wp = Vector6::new(
+                waypoints[wp_idx + 1][0],
+                waypoints[wp_idx + 1][1],
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+            );
+            let U_d_seg = waypoints[wp_idx + 1][2];
+
+            let refs: (f64, f64) =
+                self.los_guidance
+                    .compute_refs(&xs_current, &wp_prev, &wp, U_d_seg, time_step);
+
+            let tau: Vector3<f64> = Vector3::new(refs.0, refs.1, 0.0);
+            xs_current = self.ship_model.erk4_step(time_step, &xs_current, &tau);
+
+            refs_array.push(refs);
+            u_array.push(tau);
+            t_array.push(time.clone());
+            time += time_step;
+
+            xs_array.push(xs_current);
+            // Break if inside final waypoint acceptance radius
+            let dist2wp_vec = Vector2::new(wp[0] - xs_current[0], wp[1] - xs_current[1]);
+            let L_wp_seg = Vector2::new(wp[0] - wp_prev[0], wp[1] - wp_prev[1]).normalize();
+            let dist2wp = dist2wp_vec.norm();
+            let segment_passed =
+                L_wp_seg.dot(&dist2wp_vec.normalize()) < f64::cos(utils::deg2rad(90.0));
+            // println!(
+            //     "chi_diff: {:.2} | d2wp: {:.2} | L.dot(d2wp): {:.2} | segment_passed: {:?}",
+            //     utils::rad2deg(utils::wrap_angle_diff_to_pmpi(refs.0, xs_current[2])),
+            //     dist2wp,
+            //     utils::rad2deg(L_wp_seg.dot(&dist2wp_vec.normalize())),
+            //     segment_passed
+            // );
+            if dist2wp <= acceptance_radius || segment_passed {
+                wp_idx += 1;
+            }
+        }
+        let dist2last_wp = ((waypoints.last().unwrap()[0] - xs_array.last().unwrap()[0]).powi(2)
+            + (waypoints.last().unwrap()[1] - xs_array.last().unwrap()[1]).powi(2))
+        .sqrt();
+        reached_last = dist2last_wp <= radius;
+        println!(
+            "acceptance_radius: {:.2} | d2last_wp: {:.2} | reached_last: {:?}",
+            radius, dist2last_wp, reached_last
+        );
+        (xs_array, u_array, refs_array, t_array, reached_last)
     }
 }
 

@@ -1,5 +1,5 @@
 """
-    Demonstrates how to use the Informed-RRT* algorithm with the colav-simulator.
+    Demonstrates how to use the RRT* algorithm with the colav-simulator.
 
     Remember to install the dependencies (COLAV-simulator) before running this script.
 
@@ -26,17 +26,17 @@ from shapely import strtree
 
 
 @dataclass
-class InformedRRTStarParams:
+class RRTStarParams:
     max_nodes: int = 3000
-    max_iter: int = 30000
+    max_iter: int = 25000
     iter_between_direct_goal_growth: int = 250
     min_node_dist: float = 10.0
     goal_radius: float = 700.0
     step_size: float = 0.5
     min_steering_time: float = 5.0
     max_steering_time: float = 20.0
-    steering_acceptance_radius: float = 15.0
-    max_nn_node_dist: float = 100.0
+    steering_acceptance_radius: float = 10.0
+    max_nn_node_dist: float = 120.0
     gamma: float = 1200.0
 
     @classmethod
@@ -50,7 +50,7 @@ class InformedRRTStarParams:
 
 @dataclass
 class RRTConfig:
-    params: InformedRRTStarParams = InformedRRTStarParams()
+    params: RRTStarParams = RRTStarParams()
     model: models.KinematicCSOGParams = models.KinematicCSOGParams(
         name="KinematicCSOG", draft=0.5, length=10.0, width=3.0, T_chi=10.0, T_U=7.0, r_max=np.deg2rad(4), U_min=0.0, U_max=15.0
     )
@@ -59,7 +59,7 @@ class RRTConfig:
     @classmethod
     def from_dict(cls, config_dict: dict):
         config = RRTConfig(
-            params=InformedRRTStarParams.from_dict(config_dict["params"]),
+            params=RRTStarParams.from_dict(config_dict["params"]),
             model=models.KinematicCSOGParams.from_dict(config_dict["model"]),
             los=guidances.LOSGuidanceParams.from_dict(config_dict["los"]),
         )
@@ -69,7 +69,7 @@ class RRTConfig:
 
 @dataclass
 class RRTPlannerParams:
-    los: guidances.LOSGuidanceParams = guidances.LOSGuidanceParams()
+    los: guidances.LOSGuidanceParams = guidances.LOSGuidanceParams(K_p=0.035, K_i=0.0, pass_angle_threshold=90.0, R_a=25.0, max_cross_track_error_int=30.0)
     rrt: RRTConfig = RRTConfig()
 
     @classmethod
@@ -79,15 +79,15 @@ class RRTPlannerParams:
         return config
 
 
-class InformedRRTStar(ci.ICOLAV):
+class RRTStar(ci.ICOLAV):
     def __init__(self, config: RRTPlannerParams) -> None:
         self._rrt_config = config.rrt
-        self._rrt = rrt_star_lib.InformedRRTStar(config.rrt.los, config.rrt.model, config.rrt.params)
-        self._los: guidances.LOSGuidance = guidances.LOSGuidance(config.los)
+        self._rrt = rrt_star_lib.RRTStar(config.rrt.los, config.rrt.model, config.rrt.params)
+        self._los = guidances.LOSGuidance(config.los)
 
         self._rrt_inputs: np.ndarray = np.empty(3)
         self._rrt_trajectory: np.ndarray = np.empty(6)
-        self._rrt_waypoints: np.ndarray = np.empty(2)
+        self._rrt_waypoints: np.ndarray = np.empty(3)
         self._geometry_tree: strtree.STRtree = strtree.STRtree([])
 
         self._min_depth: int = 0
@@ -186,7 +186,7 @@ class InformedRRTStar(ci.ICOLAV):
                 "inputs": inputs,
                 "costs": costs,
             }
-            pd.DataFrame(results).to_json("informed_rrt_results.json")
+            pd.DataFrame(results).to_json("rrt_star_results.json")
             # rrt_solution = hf.load_rrt_solution()
             times = np.array(rrt_solution["times"])
             n_samples = len(times)
@@ -248,15 +248,14 @@ class InformedRRTStar(ci.ICOLAV):
     def plot_results(self, ax_map: plt.Axes, enc: senc.ENC, plt_handles: dict, **kwargs) -> dict:
 
         if self._rrt_trajectory.size > 6:
-            plt_handles["colav_nominal_trajectory"].set_xdata(self._rrt_trajectory[1, 0:-1:10])
-            plt_handles["colav_nominal_trajectory"].set_ydata(self._rrt_trajectory[0, 0:-1:10])
-
+            plt_handles["colav_nominal_trajectory"].set_xdata(self._rrt_trajectory[1, 0:])
+            plt_handles["colav_nominal_trajectory"].set_ydata(self._rrt_trajectory[0, 0:])
         return plt_handles
 
 
 if __name__ == "__main__":
     params = RRTPlannerParams()
-    params.rrt.params = InformedRRTStarParams(
+    params.rrt.params = RRTStarParams(
         max_nodes=10000,
         max_iter=25000,
         iter_between_direct_goal_growth=500,
@@ -270,7 +269,7 @@ if __name__ == "__main__":
         gamma=1500.0,
     )
 
-    rrt = InformedRRTStar(params)
+    rrt = RRTStar(params)
 
     scenario_file = dp.scenarios / "rl_scenario.yaml"
     scenario_generator = ScenarioGenerator()

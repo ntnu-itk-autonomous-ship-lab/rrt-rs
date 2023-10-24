@@ -17,6 +17,7 @@ import colav_simulator.core.models as models
 import colav_simulator.core.stochasticity as stochasticity
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 import rrt_star_lib
 import seacharts.enc as senc
 from colav_simulator.scenario_management import ScenarioGenerator
@@ -82,6 +83,21 @@ class RRTPlannerParams:
         return config
 
 
+def path_length(path: np.ndarray) -> float:
+    """Computes the length of a path
+
+    Args:
+        path (np.ndarray): Path or trajectory to consider, shape (n_states, n_samples)
+
+    Returns:
+        float: Path length
+    """
+    path_length = 0.0
+    for k in range(path.shape[1] - 1):
+        path_length += np.linalg.norm(path[:2, k + 1] - path[:2, k])
+    return path_length
+
+
 class PQRRTStar(ci.ICOLAV):
     def __init__(self, config: RRTPlannerParams) -> None:
         self._rrt_config = config.rrt
@@ -119,7 +135,7 @@ class PQRRTStar(ci.ICOLAV):
             self._t_prev = t
             self._map_origin = ownship_state[:2]
             self._initialized = True
-            relevant_grounding_hazards = mapf.extract_relevant_grounding_hazards_as_union(self._min_depth, enc, buffer=5.0, show_plots=True)
+            relevant_grounding_hazards = mapf.extract_relevant_grounding_hazards_as_union(self._min_depth, enc, buffer=10.0, show_plots=True)
             self._geometry_tree, _ = mapf.fill_rtree_with_geometries(relevant_grounding_hazards)
             safe_sea_triangulation = mapf.create_safe_sea_triangulation(enc, self._min_depth, show_plots=False)
             self._rrt.transfer_enc_hazards(relevant_grounding_hazards[0])
@@ -127,8 +143,13 @@ class PQRRTStar(ci.ICOLAV):
             self._rrt.set_goal_state(goal_state.tolist())
 
             solution_times = []
+            waypoint_list = []
+            trajectory_list = []
+            trajectory_timespans = []
+            costs = []
+            inputs = []
             n_mc = 100
-            for aa in range(n_mc):
+            for aa in range(0, n_mc):
                 print(f"Monte Carlo iteration {aa+1}/{n_mc}")
                 time_now = time.time()
                 self._rrt.reset(aa)
@@ -143,14 +164,13 @@ class PQRRTStar(ci.ICOLAV):
                 times = np.array(rrt_solution["times"])
                 n_samples = len(times)
                 if n_samples > 0:
-                    solution_times.append(time_elapsed)
-
-                if aa == 0 and enc is not None:
                     # rrt_solution = hf.load_rrt_solution()
                     times = np.array(rrt_solution["times"])
                     n_samples = len(times)
                     if n_samples == 0:
                         raise RuntimeError("RRT did not find a solution")
+
+                    costs.append(rrt_solution["cost"])
                     self._rrt_trajectory = np.zeros((6, n_samples))
                     self._rrt_inputs = np.zeros((3, n_samples - 1))
                     n_wps = len(rrt_solution["waypoints"])
@@ -161,6 +181,14 @@ class PQRRTStar(ci.ICOLAV):
                         self._rrt_trajectory[:, k] = np.array(rrt_solution["states"][k])
                         if k < n_samples - 1:
                             self._rrt_inputs[:, k] = np.array(rrt_solution["inputs"][k])
+
+                    solution_times.append(time_elapsed)
+                    waypoint_list.append(self._rrt_waypoints)
+                    trajectory_list.append(self._rrt_trajectory)
+                    trajectory_timespans.append(times)
+                    inputs.append(self._rrt_inputs)
+
+                if aa == 0 and enc is not None:
                     mapf.plot_rrt_tree(self._rrt.get_tree_as_list_of_dicts(), enc)
                     mapf.plot_trajectory(self._rrt_waypoints, enc, "orange", marker_type="o")
                     # mapf.plot_trajectory(self._rrt_trajectory, enc, "magenta")
@@ -169,6 +197,15 @@ class PQRRTStar(ci.ICOLAV):
                     enc.draw_polygon(ship_poly, color="yellow")
                     enc.draw_circle(center=(goal_state[1], goal_state[0]), radius=30.0, color="magenta", alpha=0.3)
 
+            results = {
+                "solution_times": solution_times,
+                "waypoints": waypoint_list,
+                "trajectories": trajectory_list,
+                "trajectory_timespans": trajectory_timespans,
+                "inputs": inputs,
+                "costs": costs,
+            }
+            pd.DataFrame(results).to_json("pqrrt_results.json")
             # rrt_solution = hf.load_rrt_solution()
             times = np.array(rrt_solution["times"])
             n_samples = len(times)
@@ -238,20 +275,20 @@ class PQRRTStar(ci.ICOLAV):
 if __name__ == "__main__":
     params = RRTPlannerParams()
     params.rrt.params = PQRRTStarParams(
-        max_nodes=3000,
+        max_nodes=10000,
         max_iter=25000,
         iter_between_direct_goal_growth=500,
-        min_node_dist=10.0,
+        min_node_dist=5.0,
         goal_radius=700.0,
         step_size=1.0,
         min_steering_time=5.0,
-        max_steering_time=15.0,
+        max_steering_time=20.0,
         steering_acceptance_radius=10.0,
-        max_nn_node_dist=120.0,
-        gamma=1200.0,
+        max_nn_node_dist=100.0,
+        gamma=1500.0,
         max_sample_adjustments=100,
         lambda_sample_adjustment=5.0,
-        safe_distance=0.0,
+        safe_distance=10.0,
         max_ancestry_level=2,
     )
 

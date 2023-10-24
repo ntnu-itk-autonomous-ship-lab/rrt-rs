@@ -152,7 +152,7 @@ impl ENCData {
             LineString(
                 xs_array
                     .iter()
-                    .step_by(2)
+                    .step_by(1)
                     .map(|x| coord! {x: x[0], y: x[1]})
                     .collect(),
             )
