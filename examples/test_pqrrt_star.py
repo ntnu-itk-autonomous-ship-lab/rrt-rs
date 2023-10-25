@@ -142,22 +142,35 @@ class PQRRTStar(ci.ICOLAV):
             self._rrt.transfer_safe_sea_triangulation(safe_sea_triangulation)
             self._rrt.set_goal_state(goal_state.tolist())
 
+            n_mc = 100
             solution_times = []
             waypoint_list = []
             trajectory_list = []
             trajectory_timespans = []
             costs = []
             inputs = []
-            n_mc = 100
+            success_indices = []
+            # lload = pd.read_json("rrt_results.json").to_dict()
+            # solution_times = list(lload["solution_times"].values())
+            # waypoint_list = list(lload["waypoints"].values())
+            # trajectory_list = list(lload["trajectories"].values())
+            # trajectory_timespans = list(lload["trajectory_timespans"].values())
+            # costs = list(lload["costs"].values())
+            # inputs = list(lload["inputs"].values())
+
             for aa in range(0, n_mc):
                 print(f"Monte Carlo iteration {aa+1}/{n_mc}")
                 time_now = time.time()
                 self._rrt.reset(aa)
 
                 U_d = ownship_state[3]  # Constant desired speed given by the initial own-ship speed
-                rrt_solution: dict = self._rrt.grow_towards_goal(
-                    ownship_state=ownship_state.tolist(), U_d=U_d, do_list=[], initialized=False, return_on_first_solution=True
-                )
+                try:
+                    rrt_solution: dict = self._rrt.grow_towards_goal(
+                        ownship_state=ownship_state.tolist(), U_d=U_d, do_list=[], initialized=False, return_on_first_solution=True
+                    )
+                except Exception as e:
+                    print(e)
+                    continue
 
                 time_elapsed = time.time() - time_now
                 # rrt_solution = hf.load_rrt_solution()
@@ -165,12 +178,9 @@ class PQRRTStar(ci.ICOLAV):
                 n_samples = len(times)
                 if n_samples > 0:
                     # rrt_solution = hf.load_rrt_solution()
-                    times = np.array(rrt_solution["times"])
-                    n_samples = len(times)
-                    if n_samples == 0:
-                        raise RuntimeError("RRT did not find a solution")
-
+                    success_indices.append(aa)
                     costs.append(rrt_solution["cost"])
+
                     self._rrt_trajectory = np.zeros((6, n_samples))
                     self._rrt_inputs = np.zeros((3, n_samples - 1))
                     n_wps = len(rrt_solution["waypoints"])
@@ -205,7 +215,7 @@ class PQRRTStar(ci.ICOLAV):
                 "inputs": inputs,
                 "costs": costs,
             }
-            pd.DataFrame(results).to_json("pqrrt_results.json")
+            pd.DataFrame(results).to_json("pqrrt_results_larger_planning_case.json")
             # rrt_solution = hf.load_rrt_solution()
             times = np.array(rrt_solution["times"])
             n_samples = len(times)
@@ -226,10 +236,11 @@ class PQRRTStar(ci.ICOLAV):
             if enc is not None:
                 mapf.plot_rrt_tree(self._rrt.get_tree_as_list_of_dicts(), enc)
                 mapf.plot_trajectory(self._rrt_waypoints, enc, "orange", marker_type="o")
-                mapf.plot_trajectory(self._rrt_trajectory, enc, "magenta")
+                # mapf.plot_trajectory(self._rrt_trajectory, enc, "magenta")
                 mapf.plot_dynamic_obstacles(do_list, enc, 100.0, self._rrt_config.params.step_size)
-                ship_poly = mapf.create_ship_polygon(ownship_state[0], ownship_state[1], ownship_state[2], kwargs["os_length"], kwargs["os_width"], 1.0, 1.0)
-                enc.draw_polygon(ship_poly, color="pink")
+                ship_poly = mapf.create_ship_polygon(ownship_state[0], ownship_state[1], ownship_state[2], kwargs["os_length"], kwargs["os_width"], 10.0, 10.0)
+                enc.draw_polygon(ship_poly, color="yellow")
+                enc.draw_circle(center=(goal_state[1], goal_state[0]), radius=30.0, color="magenta", alpha=0.3)
         else:
             self._rrt_trajectory = self._rrt_trajectory[:, 1:]
             self._rrt_inputs = self._rrt_inputs[:, 1:]
@@ -288,7 +299,7 @@ if __name__ == "__main__":
         gamma=1500.0,
         max_sample_adjustments=100,
         lambda_sample_adjustment=5.0,
-        safe_distance=10.0,
+        safe_distance=5.0,
         max_ancestry_level=2,
     )
 

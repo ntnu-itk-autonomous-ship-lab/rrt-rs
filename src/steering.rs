@@ -453,7 +453,6 @@ impl Steering for SimpleSteering<KinematicCSOG> {
         Vec<f64>,
         bool,
     ) {
-        let radius = acceptance_radius;
         let mut t_array: Vec<f64> = Vec::new();
         let mut xs_array: Vec<Vector6<f64>> = Vec::new();
         let mut u_array: Vec<Vector3<f64>> = Vec::new();
@@ -498,7 +497,6 @@ impl Steering for SimpleSteering<KinematicCSOG> {
             time += time_step;
 
             xs_array.push(xs_current);
-            // Break if inside final waypoint acceptance radius
             let dist2wp_vec = Vector2::new(wp[0] - xs_current[0], wp[1] - xs_current[1]);
             let L_wp_seg = Vector2::new(wp[0] - wp_prev[0], wp[1] - wp_prev[1]).normalize();
             let dist2wp = dist2wp_vec.norm();
@@ -511,17 +509,27 @@ impl Steering for SimpleSteering<KinematicCSOG> {
             //     utils::rad2deg(L_wp_seg.dot(&dist2wp_vec.normalize())),
             //     segment_passed
             // );
-            if dist2wp <= acceptance_radius || segment_passed {
+            if (dist2wp <= acceptance_radius) || segment_passed {
                 wp_idx += 1;
+            }
+
+            if wp_idx == n_wps - 1 {
+                println!(
+                    "chi_diff: {:.2} | d2wp: {:.2} | L.dot(d2wp): {:.2} | segment_passed: {:?}",
+                    utils::rad2deg(utils::wrap_angle_diff_to_pmpi(refs.0, xs_current[2])),
+                    dist2wp,
+                    utils::rad2deg(L_wp_seg.dot(&dist2wp_vec.normalize())),
+                    segment_passed
+                );
             }
         }
         let dist2last_wp = ((waypoints.last().unwrap()[0] - xs_array.last().unwrap()[0]).powi(2)
             + (waypoints.last().unwrap()[1] - xs_array.last().unwrap()[1]).powi(2))
         .sqrt();
-        reached_last = dist2last_wp <= radius;
+        reached_last = dist2last_wp <= acceptance_radius;
         println!(
             "acceptance_radius: {:.2} | d2last_wp: {:.2} | reached_last: {:?}",
-            radius, dist2last_wp, reached_last
+            acceptance_radius, dist2last_wp, reached_last
         );
         (xs_array, u_array, refs_array, t_array, reached_last)
     }

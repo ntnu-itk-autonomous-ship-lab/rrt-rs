@@ -289,7 +289,7 @@ impl InformedRRTStar {
             Ok(soln) => soln,
             Err(e) => {
                 println!("No solution found. Error msg: {:?}", e);
-                return Ok(PyList::empty(py).into_py(py));
+                RRTResult::new((vec![], vec![], vec![], vec![], std::f64::INFINITY))
             }
         };
         let duration = start.elapsed();
@@ -414,6 +414,8 @@ impl InformedRRTStar {
             z_current = z_parent;
         }
         waypoints.reverse();
+        waypoints.last_mut().unwrap()[0] = self.xs_goal[0];
+        waypoints.last_mut().unwrap()[1] = self.xs_goal[1];
         let states = trajectories
             .iter()
             .rev()
@@ -884,6 +886,11 @@ impl InformedRRTStar {
     }
 
     fn extract_best_solution(&mut self) -> PyResult<RRTResult> {
+        if self.solutions.is_empty() {
+            return Err(PyErr::new::<pyo3::exceptions::PyException, _>(
+                "No solutions found",
+            ));
+        }
         let mut opt_soln = self.solutions.iter().fold(
             RRTResult::new((vec![], vec![], vec![], vec![], std::f64::INFINITY)),
             |acc, x| {
