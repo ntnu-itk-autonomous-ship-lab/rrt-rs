@@ -179,7 +179,7 @@ class InformedRRTStar(ci.ICOLAV):
                     trajectory_timespans.append(times)
                     inputs.append(self._rrt_inputs)
 
-                if aa == 0 and enc is not None:
+                if aa == -1 and enc is not None:
                     mapf.plot_rrt_tree(self._rrt.get_tree_as_list_of_dicts(), enc)
                     mapf.plot_trajectory(self._rrt_waypoints, enc, "orange", marker_type="o")
                     # mapf.plot_trajectory(self._rrt_trajectory, enc, "magenta")
