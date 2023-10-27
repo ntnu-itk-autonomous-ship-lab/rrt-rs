@@ -178,7 +178,7 @@ class RRT(ci.ICOLAV):
                     trajectory_timespans.append(times)
                     inputs.append(self._rrt_inputs)
 
-                if aa == -1 and enc is not None:
+                if aa == 0 and enc is not None:
                     mapf.plot_rrt_tree(self._rrt.get_tree_as_list_of_dicts(), enc)
                     mapf.plot_trajectory(self._rrt_waypoints, enc, "orange", marker_type="o")
                     # mapf.plot_trajectory(self._rrt_trajectory, enc, "magenta")
@@ -187,6 +187,10 @@ class RRT(ci.ICOLAV):
                     enc.draw_polygon(ship_poly, color="yellow")
                     enc.draw_circle(center=(goal_state[1], goal_state[0]), radius=30.0, color="magenta", alpha=0.3)
 
+            solution_times = np.array(solution_times)
+            costs = np.array(costs)
+            print(f"t_solve: {solution_times.mean():.2f} +/- {solution_times.std():.2f} s | t_solve (min, max): {solution_times.min():.2f}, {solution_times.max():.2f} s")
+            print(f"cost: {costs.mean():.2f} +/- {costs.std():.2f} | cost (min, max): {costs.min():.2f}, {costs.max():.2f}")
             results = {
                 "solution_times": solution_times,
                 "waypoints": waypoint_list,
@@ -273,7 +277,7 @@ if __name__ == "__main__":
         min_node_dist=5.0,
         goal_radius=700.0,
         step_size=1.0,
-        min_steering_time=5.0,
+        min_steering_time=2.0,
         max_steering_time=20.0,
         steering_acceptance_radius=10.0,
         max_nn_node_dist=100.0,

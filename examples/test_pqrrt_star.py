@@ -207,13 +207,19 @@ class PQRRTStar(ci.ICOLAV):
                     enc.draw_polygon(ship_poly, color="yellow")
                     enc.draw_circle(center=(goal_state[1], goal_state[0]), radius=30.0, color="magenta", alpha=0.3)
 
+            solution_times_arr = np.array(solution_times)
+            costs_arr = np.array(costs)
+            print(
+                f"t_solve: {solution_times_arr.mean():.2f} +/- {solution_times_arr.std():.2f} s | t_solve (min, max): {solution_times_arr.min():.2f}, {solution_times_arr.max():.2f} s"
+            )
+            print(f"cost: {costs_arr.mean():.2f} +/- {costs_arr.std():.2f} | cost (min, max): {costs_arr.min():.2f}, {costs_arr.max():.2f}")
             results = {
-                "solution_times": solution_times,
+                "solution_times": solution_times_arr,
                 "waypoints": waypoint_list,
                 "trajectories": trajectory_list,
                 "trajectory_timespans": trajectory_timespans,
                 "inputs": inputs,
-                "costs": costs,
+                "costs_arr": costs_arr,
             }
             pd.DataFrame(results).to_json("pqrrt_results_larger_planning_case.json")
             # rrt_solution = hf.load_rrt_solution()
@@ -292,13 +298,13 @@ if __name__ == "__main__":
         min_node_dist=5.0,
         goal_radius=700.0,
         step_size=1.0,
-        min_steering_time=5.0,
+        min_steering_time=2.0,
         max_steering_time=20.0,
         steering_acceptance_radius=10.0,
         max_nn_node_dist=100.0,
         gamma=1500.0,
         max_sample_adjustments=100,
-        lambda_sample_adjustment=5.0,
+        lambda_sample_adjustment=1.0,
         safe_distance=5.0,
         max_ancestry_level=2,
     )

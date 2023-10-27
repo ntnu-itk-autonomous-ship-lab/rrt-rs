@@ -286,14 +286,22 @@ impl Steering for SimpleSteering<Telemetron> {
 
             xs_array.push(xs_next);
             // Break if inside final waypoint acceptance radius
-            let dist2goal =
-                ((xs_goal[0] - xs_next[0]).powi(2) + (xs_goal[1] - xs_next[1]).powi(2)).sqrt();
-            if dist2goal < acceptance_radius {
+            let dist2goal_vec = Vector2::new(xs_goal[0] - xs_next[0], xs_goal[1] - xs_next[1]);
+            let dist2goal = dist2goal_vec.norm();
+            let L_wp_seg =
+                Vector2::new(xs_goal[0] - xs_start[0], xs_goal[1] - xs_start[1]).normalize();
+            let segment_passed =
+                L_wp_seg.dot(&dist2goal_vec.normalize()) < f64::cos(utils::deg2rad(90.0));
+            if dist2goal <= acceptance_radius {
                 reached_goal = true;
                 // refs_array.push(refs);
                 // u_array.push(tau);
                 // t_array.push(time.clone());
                 break;
+            }
+
+            if segment_passed {
+                break; // Break if segment passed => failed to reach goal
             }
         }
         //println!("xs_next: {:?} | time: {:.2}", xs_next, time);
@@ -428,12 +436,20 @@ impl Steering for SimpleSteering<KinematicCSOG> {
             // Break if inside final waypoint acceptance radius
             let dist2goal_vec = Vector2::new(xs_goal[0] - xs_next[0], xs_goal[1] - xs_next[1]);
             let dist2goal = dist2goal_vec.norm();
+            let L_wp_seg =
+                Vector2::new(xs_goal[0] - xs_start[0], xs_goal[1] - xs_start[1]).normalize();
+            let segment_passed =
+                L_wp_seg.dot(&dist2goal_vec.normalize()) < f64::cos(utils::deg2rad(90.0));
             if dist2goal <= acceptance_radius {
                 reached_goal = true;
                 // refs_array.push(refs);
                 // u_array.push(tau);
                 // t_array.push(time.clone());
                 break;
+            }
+
+            if segment_passed {
+                break; // Break if segment passed => failed to reach goal
             }
         }
         //println!("xs_next: {:?} | time: {:.2}", xs_next, time);

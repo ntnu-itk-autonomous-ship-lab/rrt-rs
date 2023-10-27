@@ -79,7 +79,7 @@ impl RRTParams {
 pub struct RRT {
     pub c_best: f64,
     pub z_best_parent: RRTNode,
-    pub solutions: Vec<RRTResult>, // (states, times, cost) for each solution
+    pub solutions: Vec<RRTNode>, // goal state for each solution
     pub params: RRTParams,
     pub steering: SimpleSteering<KinematicCSOG>,
     pub xs_start: Vector6<f64>,
@@ -256,7 +256,7 @@ impl RRT {
                 && t_new > self.params.min_steering_time
                 && !self.is_too_close_to_neighbours(&xs_new, &None)
             {
-                let path_length = utils::compute_path_length(&xs_array);
+                let path_length = utils::compute_path_length_nalgebra(&xs_array);
                 z_new = RRTNode::new(
                     xs_new,
                     xs_array.clone(),
@@ -354,9 +354,8 @@ impl RRT {
     // Add a solution if one is found and is better than the current best
     pub fn add_solution(&mut self, z: &RRTNode, z_goal_attempt: &RRTNode) -> PyResult<()> {
         let z_goal_ = self.insert(&z_goal_attempt.clone(), &z)?;
-        let soln = self.extract_solution(&z_goal_)?;
-        self.solutions.push(soln.clone());
-        self.c_best = self.c_best.min(soln.cost);
+        self.solutions.push(z_goal_.clone());
+        self.c_best = self.c_best.min(z_goal_.cost);
         self.z_best_parent = z.clone();
         println!(
             "Solution Found! Num iter: {} | Num nodes: {} | c_best: {}",
@@ -368,7 +367,6 @@ impl RRT {
     // Find a solution by backtracking from the input node
     pub fn extract_solution(&self, z: &RRTNode) -> PyResult<RRTResult> {
         let mut z_current = self.bookkeeping_tree.get(&z.clone().id.unwrap()).unwrap();
-        let cost = z_current.data().cost;
         let speed = (z_current.data().state[3].powi(2) + z_current.data().state[4].powi(2)).sqrt();
         let mut waypoints: Vec<[f64; 3]> = vec![Vector3::new(z.state[0], z.state[1], speed).into()];
         let mut trajectories: Vec<Vec<[f64; 6]>> =
@@ -420,6 +418,7 @@ impl RRT {
             .map(|x| *x)
             .collect::<Vec<[f64; 3]>>();
         let times = Vec::from_iter((0..states.len()).map(|i| i as f64 * self.params.step_size));
+        let cost = utils::compute_path_length_slice(&states);
         Ok(RRTResult::new((waypoints, states, inputs, times, cost)))
     }
 
@@ -528,15 +527,19 @@ impl RRT {
             return Ok(false);
         }
         let mut z_goal_ = RRTNode::new(self.xs_goal.clone(), Vec::new(), Vec::new(), 0.0, 0.0, 0.0);
-        let (xs_array, u_array, _, t_new, reached) =
-            self.steer(&z, &z_goal_, max_steering_time, 5.0)?;
+        let (xs_array, u_array, _, t_new, reached) = self.steer(
+            &z,
+            &z_goal_,
+            max_steering_time,
+            self.params.steering_acceptance_radius,
+        )?;
         let x_new: Vector6<f64> = xs_array.last().copied().unwrap();
 
         if !(self.is_collision_free(&xs_array) && t_new > self.params.min_steering_time && reached)
         {
             return Ok(false);
         }
-        let cost = z.cost + utils::compute_path_length(&xs_array);
+        let cost = z.cost + utils::compute_path_length_nalgebra(&xs_array);
         if cost >= self.c_best {
             println!(
                 "Attempted goal insertion | cost : {} | c_best : {}",
@@ -631,7 +634,7 @@ impl RRT {
             let (xs_array, u_array, _, t_new, reached) = self.steer(
                 &z_near,
                 &z_new,
-                10.0 * self.params.max_steering_time,
+                4.0 * self.params.max_steering_time,
                 self.params.steering_acceptance_radius,
             )?;
             let xs_new: Vector6<f64> = xs_array.last().copied().unwrap();
@@ -640,7 +643,7 @@ impl RRT {
                 && !self.is_too_close_to_neighbours(&xs_new, &None)
                 && reached
             {
-                let path_length = utils::compute_path_length(&xs_array);
+                let path_length = utils::compute_path_length_nalgebra(&xs_array);
                 let cost = z_near.cost + path_length;
                 if cost < z_new_.cost {
                     z_new_ =
@@ -701,7 +704,7 @@ impl RRT {
         );
         // assert_eq!(reached_last, true);
 
-        let new_cost = utils::compute_path_length(
+        let new_cost = utils::compute_path_length_nalgebra(
             &xs_array
                 .iter()
                 .map(|x| Vector6::from(*x))
@@ -781,7 +784,12 @@ impl RRT {
                 "No solutions found",
             ));
         }
-        let mut opt_soln = self.solutions.iter().fold(
+        let rrt_results: Vec<RRTResult> = self
+            .solutions
+            .iter()
+            .map(|z| self.extract_solution(z).unwrap())
+            .collect();
+        let mut opt_soln = rrt_results.iter().fold(
             RRTResult::new((vec![], vec![], vec![], vec![], std::f64::INFINITY)),
             |acc, x| {
                 if x.cost < acc.cost {

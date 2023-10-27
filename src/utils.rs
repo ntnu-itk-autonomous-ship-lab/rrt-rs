@@ -46,8 +46,10 @@ pub fn informed_sample(
     let r_1 = c_max / 2.0;
     let r_2 = (c_max.powi(2) - c_min.powi(2)).abs().sqrt() / 2.0;
     let L = Matrix2::from_partial_diagonal(&[r_1, r_2]);
+    let alpha = f64::atan2(p_goal[1] - p_start[1], p_goal[0] - p_start[0]);
+    let C = Matrix2::new(alpha.cos(), -alpha.sin(), alpha.sin(), alpha.cos());
     let x_ball: Vector2<f64> = sample_from_unit_ball(rng);
-    let p_rand: Vector2<f64> = transform_standard_sample(x_ball, L, p_centre);
+    let p_rand: Vector2<f64> = transform_standard_sample(x_ball, C * L, p_centre);
     p_rand
 }
 
@@ -192,7 +194,18 @@ pub fn saturate(x: f64, x_min: f64, x_max: f64) -> f64 {
     x.min(x_max).max(x_min)
 }
 
-pub fn compute_path_length(xs_array: &Vec<Vector6<f64>>) -> f64 {
+pub fn compute_path_length_slice(xs_array: &Vec<[f64; 6]>) -> f64 {
+    xs_array
+        .iter()
+        .zip(xs_array.iter().skip(1))
+        .map(|(x1, x2)| {
+            //println!("x1: {:?} | xs: {:?}", x1, x2);
+            (Vector2::new(x1[0], x1[1]) - Vector2::new(x2[0], x2[1])).norm()
+        })
+        .sum()
+}
+
+pub fn compute_path_length_nalgebra(xs_array: &Vec<Vector6<f64>>) -> f64 {
     xs_array
         .iter()
         .zip(xs_array.iter().skip(1))
