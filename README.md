@@ -6,8 +6,6 @@ Rust library containing Rapidly-exploring Random Tree variants for trajectory pl
 [![python version](https://img.shields.io/badge/python-3.11-blue)]()
 
 ## Python Dependencies
-Install these first.
-
 - maturin
 - matplotlib
 - shapely
