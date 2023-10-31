@@ -202,25 +202,19 @@ impl RRT {
         Ok(node_list.into_py(py))
     }
 
-    pub fn sample_random_leaf_node(&mut self) -> PyResult<PyDict> {
-        let mut node_id = self.bookkeeping_tree.root_node_id().unwrap();
-        loop {
-            let children_ids = self.bookkeeping_tree.children_ids(node_id).unwrap();
-            let mut children_ids_vec = children_ids.collect::<Vec<_>>();
-            if children_ids_vec.is_empty() {
-                break;
-            }
-            let idx = self.rng.gen_range(0..children_ids_vec.len());
-            node_id = children_ids_vec[idx];
-        }
-        let node = self.bookkeeping_tree.get(node_id).unwrap();
-        let pydict = PyDict::new(self.py());
-        pydict.set_item("state", node.data().state.as_slice())?;
-        pydict.set_item("cost", node.data().cost)?;
-        pydict.set_item("d2land", node.data().d2land)?;
-        pydict.set_item("time", node.data().time)?;
-        pydict.set_item("id", node_id.clone())?;
-        Ok(node.data().clone())
+    pub fn nearest_solution(&mut self, position: &PyList, py: Python<'_>) -> PyResult<PyObject> {
+        assert!(self.num_nodes > 0);
+        let z_pos = RRTNode::new(
+            Vector6::from_vec(position.extract::<Vec<f64>>()?),
+            Vec::new(),
+            Vec::new(),
+            0.0,
+            0.0,
+            0.0,
+        );
+        let z_nearest = self.nearest(&z_pos)?;
+        let result = self.extract_solution(&z_nearest)?;
+        Ok(result.to_object(py))
     }
 
     #[allow(non_snake_case)]
