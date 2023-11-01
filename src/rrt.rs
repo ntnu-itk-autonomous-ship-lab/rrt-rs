@@ -78,7 +78,6 @@ impl RRTParams {
 #[pyclass]
 pub struct RRT {
     pub c_best: f64,
-    pub z_best_parent: RRTNode,
     pub solutions: Vec<RRTNode>, // goal state for each solution
     pub params: RRTParams,
     pub steering: SimpleSteering<KinematicCSOG>,
@@ -100,7 +99,6 @@ impl RRT {
         println!("RRT initialized with params: {:?}", params);
         Self {
             c_best: std::f64::INFINITY,
-            z_best_parent: RRTNode::new(Vector6::zeros(), Vec::new(), Vec::new(), 0.0, 0.0, 0.0),
             solutions: Vec::new(),
             params: params.clone(),
             steering: SimpleSteering::new(los, model),
@@ -118,7 +116,6 @@ impl RRT {
 
     pub fn reset(&mut self, seed: Option<u64>) {
         self.c_best = std::f64::INFINITY;
-        self.z_best_parent = RRTNode::new(Vector6::zeros(), Vec::new(), Vec::new(), 0.0, 0.0, 0.0);
         self.solutions = Vec::new();
         self.num_nodes = 0;
         self.num_iter = 0;
@@ -371,7 +368,6 @@ impl RRT {
         let z_goal_ = self.insert(&z_goal_attempt.clone(), &z)?;
         self.solutions.push(z_goal_.clone());
         self.c_best = self.c_best.min(z_goal_.cost);
-        self.z_best_parent = z.clone();
         println!(
             "Solution Found! Num iter: {} | Num nodes: {} | c_best: {}",
             self.num_iter, self.num_nodes, self.c_best
@@ -523,6 +519,16 @@ impl RRT {
         dist_squared < self.params.goal_radius.powi(2)
     }
 
+    pub fn reached_goal(&self, z: &RRTNode) -> bool {
+        let x = z.state[0];
+        let y = z.state[1];
+        let x_goal = self.xs_goal[0];
+        let y_goal = self.xs_goal[1];
+        let dist_squared = (x - x_goal).powi(2) + (y - y_goal).powi(2);
+
+        dist_squared < self.params.goal_radius.powi(2)
+    }
+
     pub fn attempt_direct_goal_growth(&mut self, max_steering_time: f64) -> PyResult<bool> {
         if self.num_iter % self.params.iter_between_direct_goal_growth != 0 {
             return Ok(false);
@@ -537,8 +543,15 @@ impl RRT {
         z: &RRTNode,
         max_steering_time: f64,
     ) -> PyResult<bool> {
-        if z.id == self.z_best_parent.id {
-            println!("Attempted goal insertion with same node as best parent");
+        if self.reached_goal(&z) {
+            let z_parent = self
+                .bookkeeping_tree
+                .get(&z.clone().id.unwrap())
+                .unwrap()
+                .data()
+                .clone();
+            self.add_solution(&z_parent, &z)?;
+            println!("Goal reached! Num iter: {}", self.num_iter);
             return Ok(false);
         }
         let mut z_goal_ = RRTNode::new(self.xs_goal.clone(), Vec::new(), Vec::new(), 0.0, 0.0, 0.0);
@@ -571,6 +584,15 @@ impl RRT {
     /// Since we have two trees (RTree for nearest neighbor search and Tree for keeping track of parents/children),
     /// we need to keep track of the node id in both trees. This is done by setting the id of the node in the Tree
     pub fn insert(&mut self, z: &RRTNode, z_parent: &RRTNode) -> PyResult<RRTNode> {
+        if z.id.is_some() {
+            println!("Insert: Node already in tree");
+            return Ok(z.clone());
+        }
+        if z_parent.id == z.id {
+            println!("Insert: Attempted to insert node with same id as parent");
+            return Ok(z.clone());
+        }
+
         let z_parent_id = z_parent.clone().id.unwrap();
         let z_node = Node::new(z.clone());
         let z_id = self
