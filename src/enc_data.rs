@@ -11,7 +11,7 @@ use geo::{
 };
 use nalgebra::{Vector2, Vector6};
 use pyo3::prelude::*;
-use pyo3::types::PyList;
+use pyo3::types::{PyList, PyTuple};
 use std::fs::File;
 #[pyclass]
 #[derive(Clone, Debug)]
@@ -40,6 +40,12 @@ impl ENCData {
         empty
     }
 
+    pub fn transfer_bbox(&mut self, bbox: &PyTuple) -> PyResult<()> {
+        let bbox = bbox.extract::<(f64, f64, f64, f64)>()?;
+        self.bbox = Rect::new(coord! {x: bbox.1, y: bbox.0}, coord! {x: bbox.3, y: bbox.2});
+        Ok(())
+    }
+
     /// Transfer hazardous ENC data from python to rust. The ENC data is a list on the form:
     /// [land, shore, (dangerous)seabed]
     pub fn transfer_enc_hazards(&mut self, hazards: &PyAny) -> PyResult<()> {
@@ -51,7 +57,6 @@ impl ENCData {
 
         assert_eq!(hazard_type, "MultiPolygon");
         self.hazards = self.transfer_multipolygon(hazards)?;
-        self.compute_bbox()?;
         self.save_hazards_to_json()?;
         Ok(())
     }
@@ -67,6 +72,13 @@ impl ENCData {
         }
         self.safe_sea_triangulation = poly_vec;
         self.save_triangulation_to_json()?;
+        Ok(())
+    }
+
+    pub fn save_bbox_to_json(&self) -> PyResult<()> {
+        let rust_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        serde_json::to_writer_pretty(&File::create(rust_root.join("data/bbox.json"))?, &self.bbox)
+            .unwrap();
         Ok(())
     }
 
@@ -90,11 +102,18 @@ impl ENCData {
         Ok(())
     }
 
+    pub fn load_bbox_from_json(&mut self) -> PyResult<()> {
+        let rust_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let bbox_file = File::open(rust_root.join("data/bbox.json")).unwrap();
+        let bbox = serde_json::from_reader(bbox_file).unwrap();
+        self.bbox = bbox;
+        Ok(())
+    }
+
     pub fn load_hazards_from_json(&mut self) -> PyResult<()> {
         let rust_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
         let hazards_file = File::open(rust_root.join("data/hazards.json")).unwrap();
         self.hazards = serde_json::from_reader(hazards_file).unwrap();
-        self.compute_bbox()?;
         Ok(())
     }
 
@@ -108,19 +127,6 @@ impl ENCData {
 }
 
 impl ENCData {
-    pub fn compute_bbox(&mut self) -> PyResult<Rect<f64>> {
-        let mut hazards_bbox = Rect::new(coord! {x: 0.0, y: 0.0}, coord! {x: 0.0, y: 0.0});
-        if !self.hazards.is_empty() {
-            hazards_bbox = self.hazards.bounding_rect().unwrap();
-        }
-        let min_x = hazards_bbox.min().x;
-        let min_y = hazards_bbox.min().y;
-        let max_x = hazards_bbox.max().x;
-        let max_y = hazards_bbox.max().y;
-        self.bbox = Rect::new(coord! {x: min_x, y: min_y}, coord! {x: max_x, y: max_y});
-        Ok(self.bbox)
-    }
-
     /// Check if a point is inside the ENC Hazards
     pub fn inside_hazards(&self, p: &Vector2<f64>) -> bool {
         if self.is_empty() {
@@ -403,30 +409,6 @@ mod tests {
             let linestring = LineString(vec![coord! {x: 0.0, y: 2.0}, coord! {x: 0.0, y: -2.0}]);
             println!("Linestring: {:?}", linestring);
             assert_eq!(enc.intersects_with_linestring(&linestring), true);
-        })
-    }
-
-    #[test]
-    fn test_compute_bbox() {
-        Python::with_gil(|py| {
-            let mut enc = ENCData::py_new();
-
-            let geometry = PyModule::import(py, "shapely.geometry").unwrap();
-            let poly_class = geometry.getattr("Polygon").unwrap();
-            let elements = vec![(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0), (0.0, 0.0)];
-            let pytuple_coords = PyList::new(py, elements);
-            let args = (pytuple_coords,);
-            let polygon = poly_class.call1(args).unwrap();
-
-            let multipoly_class = geometry.getattr("MultiPolygon").unwrap();
-            let py_poly_list = PyList::new(py, vec![polygon.clone()]);
-            let py_multipoly = multipoly_class.call1((py_poly_list,)).unwrap();
-
-            enc.set_hazards(py_multipoly).unwrap();
-
-            let bbox = enc.compute_bbox().unwrap();
-            assert_eq!(bbox.min(), coord! {x: 0.0, y: 0.0});
-            assert_eq!(bbox.max(), coord! {x: 1.0, y: 1.0});
         })
     }
 

@@ -385,10 +385,10 @@ impl Steering for SimpleSteering<Telemetron> {
             + (waypoints.last().unwrap()[1] - xs_array.last().unwrap()[1]).powi(2))
         .sqrt();
         reached_last = dist2last_wp <= radius;
-        println!(
-            "acceptance_radius: {:.2} | d2last_wp: {:.2} | reached_last: {:?}",
-            radius, dist2last_wp, reached_last
-        );
+        // println!(
+        //     "acceptance_radius: {:.2} | d2last_wp: {:.2} | reached_last: {:?}",
+        //     radius, dist2last_wp, reached_last
+        // );
         (xs_array, u_array, refs_array, t_array, reached_last)
     }
 }
@@ -529,24 +529,24 @@ impl Steering for SimpleSteering<KinematicCSOG> {
                 wp_idx += 1;
             }
 
-            if wp_idx == n_wps - 1 {
-                println!(
-                    "chi_diff: {:.2} | d2wp: {:.2} | L.dot(d2wp): {:.2} | segment_passed: {:?}",
-                    utils::rad2deg(utils::wrap_angle_diff_to_pmpi(refs.0, xs_current[2])),
-                    dist2wp,
-                    utils::rad2deg(L_wp_seg.dot(&dist2wp_vec.normalize())),
-                    segment_passed
-                );
-            }
+            // if wp_idx == n_wps - 1 {
+            //     println!(
+            //         "chi_diff: {:.2} | d2wp: {:.2} | L.dot(d2wp): {:.2} | segment_passed: {:?}",
+            //         utils::rad2deg(utils::wrap_angle_diff_to_pmpi(refs.0, xs_current[2])),
+            //         dist2wp,
+            //         utils::rad2deg(L_wp_seg.dot(&dist2wp_vec.normalize())),
+            //         segment_passed
+            //     );
+            // }
         }
         let dist2last_wp = ((waypoints.last().unwrap()[0] - xs_array.last().unwrap()[0]).powi(2)
             + (waypoints.last().unwrap()[1] - xs_array.last().unwrap()[1]).powi(2))
         .sqrt();
         reached_last = dist2last_wp <= acceptance_radius;
-        println!(
-            "acceptance_radius: {:.2} | d2last_wp: {:.2} | reached_last: {:?}",
-            acceptance_radius, dist2last_wp, reached_last
-        );
+        // println!(
+        //     "acceptance_radius: {:.2} | d2last_wp: {:.2} | reached_last: {:?}",
+        //     acceptance_radius, dist2last_wp, reached_last
+        // );
         (xs_array, u_array, refs_array, t_array, reached_last)
     }
 }

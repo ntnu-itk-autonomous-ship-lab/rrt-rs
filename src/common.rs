@@ -127,10 +127,12 @@ impl ToPyObject for RRTResult {
             }
             states.append(self.states[i].to_object(py)).unwrap();
             times.append(self.times[i].to_object(py)).unwrap();
-            if i < n_states - 1 {
-                inputs.append(self.inputs[i].to_object(py)).unwrap();
-            }
         }
+
+        for inp in self.inputs.iter() {
+            inputs.append(inp.to_object(py)).unwrap();
+        }
+
         for wp in self.waypoints.iter() {
             waypoints.append(wp.to_object(py)).unwrap();
         }

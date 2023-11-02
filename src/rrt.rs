@@ -12,7 +12,7 @@ use id_tree::*;
 use nalgebra::{Vector2, Vector3, Vector6};
 use pyo3::conversion::ToPyObject;
 use pyo3::prelude::*;
-use pyo3::types::{PyAny, PyDict, PyList};
+use pyo3::types::{PyAny, PyDict, PyList, PyTuple};
 use pyo3::FromPyObject;
 use rand::SeedableRng;
 use rand_chacha::ChaChaRng;
@@ -173,16 +173,23 @@ impl RRT {
         self.rng = ChaChaRng::seed_from_u64(seed);
     }
 
-    fn transfer_enc_hazards(&mut self, hazards: &PyAny) -> PyResult<()> {
+    pub fn transfer_bbox(&mut self, bbox: &PyTuple) -> PyResult<()> {
+        self.enc.transfer_bbox(bbox)
+    }
+
+    pub fn transfer_enc_hazards(&mut self, hazards: &PyAny) -> PyResult<()> {
         self.enc.transfer_enc_hazards(hazards)
     }
 
-    fn transfer_safe_sea_triangulation(&mut self, safe_sea_triangulation: &PyList) -> PyResult<()> {
+    pub fn transfer_safe_sea_triangulation(
+        &mut self,
+        safe_sea_triangulation: &PyList,
+    ) -> PyResult<()> {
         self.enc
             .transfer_safe_sea_triangulation(safe_sea_triangulation)
     }
 
-    fn get_tree_as_list_of_dicts(&self, py: Python<'_>) -> PyResult<PyObject> {
+    pub fn get_tree_as_list_of_dicts(&self, py: Python<'_>) -> PyResult<PyObject> {
         let node_list = PyList::empty(py);
         let root_node_id = self.bookkeeping_tree.root_node_id().unwrap();
         let node_id_int: i64 = 0;
@@ -201,8 +208,9 @@ impl RRT {
 
     pub fn nearest_solution(&mut self, position: &PyList, py: Python<'_>) -> PyResult<PyObject> {
         assert!(self.num_nodes > 0);
+        let pos = Vector2::from_vec(position.extract::<Vec<f64>>()?);
         let z_pos = RRTNode::new(
-            Vector6::from_vec(position.extract::<Vec<f64>>()?),
+            Vector6::from_vec(vec![pos[0], pos[1], 0.0, 0.0, 0.0, 0.0]),
             Vec::new(),
             Vec::new(),
             0.0,
@@ -211,6 +219,7 @@ impl RRT {
         );
         let z_nearest = self.nearest(&z_pos)?;
         let result = self.extract_solution(&z_nearest)?;
+        // let result = self.steer_through_waypoints(&result.waypoints)?;
         Ok(result.to_object(py))
     }
 
@@ -240,18 +249,14 @@ impl RRT {
         self.num_iter = 0;
         let goal_attempt_steering_time = 10.0 * 60.0;
         while self.num_nodes < self.params.max_nodes && self.num_iter < self.params.max_iter {
-            if self.attempt_direct_goal_growth(goal_attempt_steering_time)?
-                && return_on_first_solution
-            {
+            let success = self.attempt_direct_goal_growth(goal_attempt_steering_time)?;
+            if success && return_on_first_solution {
                 break;
             }
 
-            if self.goal_reachable(&z_new) {
-                if self.attempt_goal_insertion(&z_new, self.params.max_steering_time)?
-                    && return_on_first_solution
-                {
-                    break;
-                }
+            let success = self.attempt_goal_insertion(&z_new, self.params.max_steering_time)?;
+            if success && return_on_first_solution {
+                break;
             }
             z_new = RRTNode::default();
             let z_rand = self.sample()?;
@@ -369,8 +374,8 @@ impl RRT {
         self.solutions.push(z_goal_.clone());
         self.c_best = self.c_best.min(z_goal_.cost);
         println!(
-            "Solution Found! Num iter: {} | Num nodes: {} | c_best: {}",
-            self.num_iter, self.num_nodes, self.c_best
+            "Solution Found! Num iter: {} | Num nodes: {} | c: {} | c_best: {}",
+            self.num_iter, self.num_nodes, z_goal_.cost, self.c_best
         );
         Ok(())
     }
@@ -378,7 +383,7 @@ impl RRT {
     // Find a solution by backtracking from the input node
     pub fn extract_solution(&self, z: &RRTNode) -> PyResult<RRTResult> {
         let mut z_current = self.bookkeeping_tree.get(&z.clone().id.unwrap()).unwrap();
-        let speed = (z_current.data().state[3].powi(2) + z_current.data().state[4].powi(2)).sqrt();
+        let speed = (z.state[3].powi(2) + z.state[4].powi(2)).sqrt();
         let mut waypoints: Vec<[f64; 3]> = vec![Vector3::new(z.state[0], z.state[1], speed).into()];
         let mut trajectories: Vec<Vec<[f64; 6]>> =
             vec![z.trajectory.clone().into_iter().map(|x| x.into()).collect()];
@@ -387,14 +392,16 @@ impl RRT {
         while z_current.parent().is_some() {
             let parent_id = z_current.parent().unwrap();
             let z_parent = self.bookkeeping_tree.get(&parent_id).unwrap();
+            z_current = z_parent;
+
             let speed =
-                (z_parent.data().state[3].powi(2) + z_parent.data().state[4].powi(2)).sqrt();
+                (z_current.data().state[3].powi(2) + z_current.data().state[4].powi(2)).sqrt();
 
             let waypoint: [f64; 3] =
-                Vector3::new(z_parent.data().state[0], z_parent.data().state[1], speed).into();
+                Vector3::new(z_current.data().state[0], z_current.data().state[1], speed).into();
             waypoints.push(waypoint);
             trajectories.push(
-                z_parent
+                z_current
                     .data()
                     .trajectory
                     .clone()
@@ -403,7 +410,7 @@ impl RRT {
                     .collect(),
             );
             controls.push(
-                z_parent
+                z_current
                     .data()
                     .controls
                     .clone()
@@ -411,11 +418,8 @@ impl RRT {
                     .map(|x| x.into())
                     .collect(),
             );
-            z_current = z_parent;
         }
         waypoints.reverse();
-        waypoints.last_mut().unwrap()[0] = self.xs_goal[0];
-        waypoints.last_mut().unwrap()[1] = self.xs_goal[1];
         let states = trajectories
             .iter()
             .rev()
@@ -510,23 +514,13 @@ impl RRT {
     }
 
     pub fn goal_reachable(&self, z: &RRTNode) -> bool {
-        let x = z.state[0];
-        let y = z.state[1];
-        let x_goal = self.xs_goal[0];
-        let y_goal = self.xs_goal[1];
-        let dist_squared = (x - x_goal).powi(2) + (y - y_goal).powi(2);
-
+        let dist_squared = (z.vec2d() - self.xs_goal.select_rows(&[0, 1])).norm_squared();
         dist_squared < self.params.goal_radius.powi(2)
     }
 
     pub fn reached_goal(&self, z: &RRTNode) -> bool {
-        let x = z.state[0];
-        let y = z.state[1];
-        let x_goal = self.xs_goal[0];
-        let y_goal = self.xs_goal[1];
-        let dist_squared = (x - x_goal).powi(2) + (y - y_goal).powi(2);
-
-        dist_squared < self.params.goal_radius.powi(2)
+        let dist_squared = (z.vec2d() - self.xs_goal.select_rows(&[0, 1])).norm_squared();
+        dist_squared < (2.0 * self.params.steering_acceptance_radius).powi(2)
     }
 
     pub fn attempt_direct_goal_growth(&mut self, max_steering_time: f64) -> PyResult<bool> {
@@ -543,7 +537,11 @@ impl RRT {
         z: &RRTNode,
         max_steering_time: f64,
     ) -> PyResult<bool> {
-        if self.reached_goal(&z) {
+        if !self.goal_reachable(&z) {
+            return Ok(false);
+        }
+        if self.reached_goal(&z) && self.num_iter > 0 {
+            println!("Reached goal!");
             let z_parent = self
                 .bookkeeping_tree
                 .get(&z.clone().id.unwrap())
@@ -551,7 +549,10 @@ impl RRT {
                 .data()
                 .clone();
             self.add_solution(&z_parent, &z)?;
-            println!("Goal reached! Num iter: {}", self.num_iter);
+            // println!(
+            //     "Goal reached! Num iter: {} | Num nodes: {} | c_best: {}",
+            //     self.num_iter, self.num_nodes, self.c_best
+            // );
             return Ok(false);
         }
         let mut z_goal_ = RRTNode::new(self.xs_goal.clone(), Vec::new(), Vec::new(), 0.0, 0.0, 0.0);
@@ -569,10 +570,10 @@ impl RRT {
         }
         let cost = z.cost + utils::compute_path_length_nalgebra(&xs_array);
         if cost >= self.c_best {
-            println!(
-                "Attempted goal insertion | cost : {} | c_best : {}",
-                cost, self.c_best
-            );
+            // println!(
+            //     "Attempted goal insertion | cost : {} | c_best : {}",
+            //     cost, self.c_best
+            // );
             return Ok(false);
         }
         z_goal_ = RRTNode::new(x_new, xs_array, u_array, cost, 0.0, z.time + t_new);
@@ -585,14 +586,13 @@ impl RRT {
     /// we need to keep track of the node id in both trees. This is done by setting the id of the node in the Tree
     pub fn insert(&mut self, z: &RRTNode, z_parent: &RRTNode) -> PyResult<RRTNode> {
         if z.id.is_some() {
-            println!("Insert: Node already in tree");
+            // println!("Insert: Node already in tree");
             return Ok(z.clone());
         }
         if z_parent.id == z.id {
             println!("Insert: Attempted to insert node with same id as parent");
             return Ok(z.clone());
         }
-
         let z_parent_id = z_parent.clone().id.unwrap();
         let z_node = Node::new(z.clone());
         let z_id = self
