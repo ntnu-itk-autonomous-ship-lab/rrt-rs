@@ -236,7 +236,7 @@ impl RRT {
         let start = Instant::now();
         // println!("Ownship state: {:?}", ownship_state);
         // println!("Goal state: {:?}", self.xs_goal);
-        // println!("U_d: {:?}", U_d);
+        println!("U_d: {:?}", U_d);
         // println!("Do list: {:?}", do_list);
         println!("Model: {:?}", self.steering.ship_model.params);
         println!("LOS: {:?}", self.steering.los_guidance.params);
@@ -485,9 +485,11 @@ impl RRT {
 
     pub fn is_collision_free(&self, xs_array: &Vec<Vector6<f64>>) -> bool {
         if self.enc.is_empty() {
+            println!("ENC is empty");
             return true;
         }
         if !self.enc.array_inside_bbox(&xs_array) {
+            // println!("Trajectory outside ENC bbox");
             return false;
         }
         let is_collision_free = !self.enc.intersects_with_trajectory(&xs_array);
