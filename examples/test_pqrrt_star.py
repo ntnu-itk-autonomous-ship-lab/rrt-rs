@@ -29,6 +29,7 @@ from shapely import strtree
 class PQRRTStarParams:
     max_nodes: int = 3000
     max_iter: int = 25000
+    max_time: float = 5000.0
     iter_between_direct_goal_growth: int = 250
     min_node_dist: float = 10.0
     goal_radius: float = 700.0
@@ -56,9 +57,19 @@ class PQRRTStarParams:
 class RRTConfig:
     params: PQRRTStarParams = PQRRTStarParams()
     model: models.KinematicCSOGParams = models.KinematicCSOGParams(
-        name="KinematicCSOG", draft=0.5, length=10.0, width=3.0, T_chi=10.0, T_U=7.0, r_max=np.deg2rad(4), U_min=0.0, U_max=15.0
+        name="KinematicCSOG",
+        draft=0.5,
+        length=10.0,
+        width=3.0,
+        T_chi=10.0,
+        T_U=7.0,
+        r_max=np.deg2rad(4),
+        U_min=0.0,
+        U_max=15.0,
     )
-    los: guidances.LOSGuidanceParams = guidances.LOSGuidanceParams(K_p=0.035, K_i=0.0, pass_angle_threshold=90.0, R_a=25.0, max_cross_track_error_int=30.0)
+    los: guidances.LOSGuidanceParams = guidances.LOSGuidanceParams(
+        K_p=0.035, K_i=0.0, pass_angle_threshold=90.0, R_a=25.0, max_cross_track_error_int=30.0
+    )
 
     @classmethod
     def from_dict(cls, config_dict: dict):
@@ -73,12 +84,17 @@ class RRTConfig:
 
 @dataclass
 class RRTPlannerParams:
-    los: guidances.LOSGuidanceParams = guidances.LOSGuidanceParams(K_p=0.035, K_i=0.0, pass_angle_threshold=90.0, R_a=25.0, max_cross_track_error_int=30.0)
+    los: guidances.LOSGuidanceParams = guidances.LOSGuidanceParams(
+        K_p=0.035, K_i=0.0, pass_angle_threshold=90.0, R_a=25.0, max_cross_track_error_int=30.0
+    )
     rrt: RRTConfig = RRTConfig()
 
     @classmethod
     def from_dict(cls, config_dict: dict):
-        config = RRTPlannerParams(los=guidances.LOSGuidanceParams.from_dict(config_dict["los"]), rrt=RRTConfig.from_dict(config_dict["pq-rrt"]))
+        config = RRTPlannerParams(
+            los=guidances.LOSGuidanceParams.from_dict(config_dict["los"]),
+            rrt=RRTConfig.from_dict(config_dict["pq-rrt"]),
+        )
 
         return config
 
@@ -131,13 +147,16 @@ class PQRRTStar(ci.ICOLAV):
         assert goal_state is not None, "Goal state must be provided to the RRT"
         assert enc is not None, "ENC must be provided to the RRT"
         if not self._initialized:
-            self._min_depth = mapf.find_minimum_depth(kwargs["os_draft"], enc)
+            self._min_depth = 0  # mapf.find_minimum_depth(kwargs["os_draft"], enc)
             self._t_prev = t
             self._map_origin = ownship_state[:2]
             self._initialized = True
-            relevant_grounding_hazards = mapf.extract_relevant_grounding_hazards_as_union(self._min_depth, enc, buffer=10.0, show_plots=True)
+            relevant_grounding_hazards = mapf.extract_relevant_grounding_hazards_as_union(
+                self._min_depth, enc, buffer=10.0, show_plots=True
+            )
             self._geometry_tree, _ = mapf.fill_rtree_with_geometries(relevant_grounding_hazards)
             safe_sea_triangulation = mapf.create_safe_sea_triangulation(enc, self._min_depth, show_plots=False)
+            self._rrt.transfer_bbox(enc.bbox)
             self._rrt.transfer_enc_hazards(relevant_grounding_hazards[0])
             self._rrt.transfer_safe_sea_triangulation(safe_sea_triangulation)
             self._rrt.set_goal_state(goal_state.tolist())
@@ -166,7 +185,11 @@ class PQRRTStar(ci.ICOLAV):
                 U_d = ownship_state[3]  # Constant desired speed given by the initial own-ship speed
                 try:
                     rrt_solution: dict = self._rrt.grow_towards_goal(
-                        ownship_state=ownship_state.tolist(), U_d=U_d, do_list=[], initialized=False, return_on_first_solution=True
+                        ownship_state=ownship_state.tolist(),
+                        U_d=U_d,
+                        do_list=[],
+                        initialized=False,
+                        return_on_first_solution=False,
                     )
                 except Exception as e:
                     print(e)
@@ -200,19 +223,37 @@ class PQRRTStar(ci.ICOLAV):
 
                 if aa == 0 and enc is not None:
                     mapf.plot_rrt_tree(self._rrt.get_tree_as_list_of_dicts(), enc)
-                    mapf.plot_trajectory(self._rrt_waypoints, enc, "orange", marker_type="o")
-                    # mapf.plot_trajectory(self._rrt_trajectory, enc, "magenta")
-                    mapf.plot_dynamic_obstacles(do_list, enc, 100.0, self._rrt_config.params.step_size)
-                    ship_poly = mapf.create_ship_polygon(ownship_state[0], ownship_state[1], ownship_state[2], kwargs["os_length"], kwargs["os_width"], 10.0, 10.0)
+                    # mapf.plot_trajectory(self._rrt_waypoints, enc, "orange")
+                    mapf.plot_waypoints(
+                        self._rrt_waypoints,
+                        kwargs["os_draft"],
+                        enc,
+                        color="orange",
+                        point_buffer=2.0,
+                        disk_buffer=6.0,
+                        hole_buffer=2.0,
+                    )
+                    # mapf.plot_dynamic_obstacles(do_list, enc, 100.0, self._rrt_config.params.step_size)
+                    ship_poly = mapf.create_ship_polygon(
+                        ownship_state[0],
+                        ownship_state[1],
+                        ownship_state[2],
+                        kwargs["os_length"],
+                        kwargs["os_width"],
+                        2.0,
+                        2.0,
+                    )
                     enc.draw_polygon(ship_poly, color="yellow")
-                    enc.draw_circle(center=(goal_state[1], goal_state[0]), radius=30.0, color="magenta", alpha=0.3)
+                    enc.draw_circle(center=(goal_state[1], goal_state[0]), radius=20.0, color="magenta", alpha=0.3)
 
             solution_times_arr = np.array(solution_times)
             costs_arr = np.array(costs)
             print(
                 f"t_solve: {solution_times_arr.mean():.2f} +/- {solution_times_arr.std():.2f} s | t_solve (min, max): {solution_times_arr.min():.2f}, {solution_times_arr.max():.2f} s"
             )
-            print(f"cost: {costs_arr.mean():.2f} +/- {costs_arr.std():.2f} | cost (min, max): {costs_arr.min():.2f}, {costs_arr.max():.2f}")
+            print(
+                f"cost: {costs_arr.mean():.2f} +/- {costs_arr.std():.2f} | cost (min, max): {costs_arr.min():.2f}, {costs_arr.max():.2f}"
+            )
             results = {
                 "solution_times": solution_times_arr,
                 "waypoints": waypoint_list,
@@ -221,7 +262,7 @@ class PQRRTStar(ci.ICOLAV):
                 "inputs": inputs,
                 "costs_arr": costs_arr,
             }
-            pd.DataFrame(results).to_json("pqrrt_results_larger_planning_case.json")
+            pd.DataFrame(results).to_json("pqrrt_results_smaller_planning_case.json")
             # rrt_solution = hf.load_rrt_solution()
             times = np.array(rrt_solution["times"])
             n_samples = len(times)
@@ -244,7 +285,15 @@ class PQRRTStar(ci.ICOLAV):
                 mapf.plot_trajectory(self._rrt_waypoints, enc, "orange", marker_type="o")
                 # mapf.plot_trajectory(self._rrt_trajectory, enc, "magenta")
                 mapf.plot_dynamic_obstacles(do_list, enc, 100.0, self._rrt_config.params.step_size)
-                ship_poly = mapf.create_ship_polygon(ownship_state[0], ownship_state[1], ownship_state[2], kwargs["os_length"], kwargs["os_width"], 10.0, 10.0)
+                ship_poly = mapf.create_ship_polygon(
+                    ownship_state[0],
+                    ownship_state[1],
+                    ownship_state[2],
+                    kwargs["os_length"],
+                    kwargs["os_width"],
+                    10.0,
+                    10.0,
+                )
                 enc.draw_polygon(ship_poly, color="yellow")
                 enc.draw_circle(center=(goal_state[1], goal_state[0]), radius=30.0, color="magenta", alpha=0.3)
         else:
@@ -254,7 +303,11 @@ class PQRRTStar(ci.ICOLAV):
         self._t_prev = t
         # Alternative 1: Use LOS-guidance to track the trajectory
         self._references = self._los.compute_references(
-            self._rrt_waypoints[:2, :], speed_plan=self._rrt_waypoints[2, :], times=None, xs=ownship_state, dt=t - self._t_prev
+            self._rrt_waypoints[:2, :],
+            speed_plan=self._rrt_waypoints[2, :],
+            times=None,
+            xs=ownship_state,
+            dt=t - self._t_prev,
         )
 
         # Alternative 2: Apply inputs directly to the ownship (bad todo in practice)
@@ -282,7 +335,6 @@ class PQRRTStar(ci.ICOLAV):
             }
 
     def plot_results(self, ax_map: plt.Axes, enc: senc.ENC, plt_handles: dict, **kwargs) -> dict:
-
         if self._rrt_trajectory.size > 6:
             plt_handles["colav_nominal_trajectory"].set_xdata(self._rrt_trajectory[1, 0:])
             plt_handles["colav_nominal_trajectory"].set_ydata(self._rrt_trajectory[0, 0:])
@@ -291,27 +343,53 @@ class PQRRTStar(ci.ICOLAV):
 
 if __name__ == "__main__":
     params = RRTPlannerParams()
-    params.rrt.params = PQRRTStarParams(
-        max_nodes=10000,
-        max_iter=25000,
-        iter_between_direct_goal_growth=500,
-        min_node_dist=5.0,
-        goal_radius=700.0,
-        step_size=1.0,
-        min_steering_time=2.0,
-        max_steering_time=20.0,
-        steering_acceptance_radius=10.0,
-        max_nn_node_dist=100.0,
-        gamma=1500.0,
-        max_sample_adjustments=100,
-        lambda_sample_adjustment=1.0,
-        safe_distance=5.0,
-        max_ancestry_level=2,
-    )
+
+    choice = 1
+    if choice == 0:
+        scenario_file = dp.scenarios / "rl_scenario.yaml"
+        params.rrt.params = PQRRTStarParams(
+            max_nodes=10000,
+            max_iter=25000,
+            max_time=5000.0,
+            iter_between_direct_goal_growth=500,
+            min_node_dist=5.0,
+            goal_radius=700.0,
+            step_size=1.0,
+            min_steering_time=2.0,
+            max_steering_time=20.0,
+            steering_acceptance_radius=10.0,
+            max_nn_node_dist=100.0,
+            gamma=1500.0,
+            max_sample_adjustments=100,
+            lambda_sample_adjustment=1.0,
+            safe_distance=5.0,
+            max_ancestry_level=2,
+        )
+
+    elif choice == 1:
+        scenario_file = dp.scenarios / "rogaland_random_rl.yaml"
+
+        params.rrt.params = PQRRTStarParams(
+            max_nodes=5000,
+            max_iter=12000,
+            max_time=50.0,
+            iter_between_direct_goal_growth=500,
+            min_node_dist=5.0,
+            goal_radius=100.0,
+            step_size=1.0,
+            min_steering_time=2.0,
+            max_steering_time=20.0,
+            steering_acceptance_radius=10.0,
+            max_nn_node_dist=100.0,
+            gamma=1500.0,
+            max_sample_adjustments=100,
+            lambda_sample_adjustment=1.0,
+            safe_distance=5.0,
+            max_ancestry_level=2,
+        )
 
     rrt = PQRRTStar(params)
 
-    scenario_file = dp.scenarios / "rl_scenario.yaml"
     scenario_generator = ScenarioGenerator()
     scenario_data = scenario_generator.generate(config_file=scenario_file)
     simulator = Simulator()

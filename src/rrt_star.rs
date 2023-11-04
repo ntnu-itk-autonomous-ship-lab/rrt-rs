@@ -24,6 +24,7 @@ use std::time::Instant;
 pub struct RRTStarParams {
     pub max_nodes: u64,
     pub max_iter: u64,
+    pub max_time: f64,
     pub iter_between_direct_goal_growth: u64,
     pub min_node_dist: f64,
     pub goal_radius: f64,
@@ -40,6 +41,7 @@ impl RRTStarParams {
         Self {
             max_nodes: 10000,
             max_iter: 100000,
+            max_time: 300.0,
             iter_between_direct_goal_growth: 100,
             min_node_dist: 10.0,
             goal_radius: 100.0,
@@ -301,6 +303,10 @@ impl RRTStar {
                     self.num_iter, self.num_nodes, self.c_best
                 );
             }
+            if start.elapsed().as_secs() as f64 > self.params.max_time {
+                println!("RRT* timed out after {} seconds", self.params.max_time);
+                break;
+            }
         }
         let opt_soln = match self.extract_best_solution() {
             Ok(soln) => soln,
@@ -530,7 +536,9 @@ impl RRTStar {
     }
 
     pub fn attempt_direct_goal_growth(&mut self, max_steering_time: f64) -> PyResult<bool> {
-        if self.num_iter % self.params.iter_between_direct_goal_growth != 0 {
+        if self.num_iter % self.params.iter_between_direct_goal_growth != 0
+            || !self.solutions.is_empty()
+        {
             return Ok(false);
         }
         let z_goal = RRTNode::new(self.xs_goal.clone(), Vec::new(), Vec::new(), 0.0, 0.0, 0.0);
@@ -558,7 +566,7 @@ impl RRTStar {
             //     "Goal reached! Num iter: {} | Num nodes: {} | c_best: {}",
             //     self.num_iter, self.num_nodes, self.c_best
             // );
-            return Ok(false);
+            return Ok(true);
         }
         let mut z_goal_ = RRTNode::new(self.xs_goal.clone(), Vec::new(), Vec::new(), 0.0, 0.0, 0.0);
         let (xs_array, u_array, _, t_new, reached) = self.steer(
@@ -968,6 +976,7 @@ mod tests {
             RRTStarParams {
                 max_nodes: 1000,
                 max_iter: 100000,
+                max_time: 300.0,
                 iter_between_direct_goal_growth: 100,
                 min_node_dist: 20.0,
                 goal_radius: 100.0,
@@ -993,6 +1002,7 @@ mod tests {
             RRTStarParams {
                 max_nodes: 1000,
                 max_iter: 100000,
+                max_time: 300.0,
                 iter_between_direct_goal_growth: 100,
                 min_node_dist: 50.0,
                 goal_radius: 100.0,
@@ -1046,6 +1056,7 @@ mod tests {
             RRTStarParams {
                 max_nodes: 1700,
                 max_iter: 10000,
+                max_time: 300.0,
                 iter_between_direct_goal_growth: 100,
                 min_node_dist: 30.0,
                 goal_radius: 600.0,
@@ -1085,6 +1096,7 @@ mod tests {
             RRTStarParams {
                 max_nodes: 2000,
                 max_iter: 10000,
+                max_time: 300.0,
                 iter_between_direct_goal_growth: 100,
                 min_node_dist: 10.0,
                 goal_radius: 10.0,
