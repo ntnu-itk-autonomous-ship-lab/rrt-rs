@@ -24,25 +24,25 @@ use nalgebra::{Matrix3, Vector2, Vector3};
 use pyo3::prelude::*;
 use pyo3::FromPyObject;
 use serde::{Deserialize, Serialize};
-use std::f64::consts::PI;
+use std::f32::consts::PI;
 
 #[allow(non_snake_case)]
 #[derive(Debug, Clone, Copy)]
 pub struct TelemetronParams {
-    pub draft: f64,
-    pub length: f64,
-    pub width: f64,
-    pub l_r: f64,
-    pub M_inv: Matrix3<f64>,
-    pub M: Matrix3<f64>,
-    pub D_c: Matrix3<f64>,
-    pub D_q: Matrix3<f64>,
-    pub D_l: Matrix3<f64>,
-    pub Fx_limits: Vector2<f64>,
-    pub Fy_limits: Vector2<f64>,
-    pub r_max: f64,
-    pub U_max: f64,
-    pub U_min: f64,
+    pub draft: f32,
+    pub length: f32,
+    pub width: f32,
+    pub l_r: f32,
+    pub M_inv: Matrix3<f32>,
+    pub M: Matrix3<f32>,
+    pub D_c: Matrix3<f32>,
+    pub D_q: Matrix3<f32>,
+    pub D_l: Matrix3<f32>,
+    pub Fx_limits: Vector2<f32>,
+    pub Fy_limits: Vector2<f32>,
+    pub r_max: f32,
+    pub U_max: f32,
+    pub U_min: f32,
 }
 
 #[allow(non_snake_case)]
@@ -72,14 +72,14 @@ impl TelemetronParams {
 #[derive(FromPyObject, Serialize, Deserialize, Debug, Clone, Copy)]
 #[allow(non_snake_case)]
 pub struct KinematicCSOGParams {
-    pub draft: f64,
-    pub length: f64,
-    pub width: f64,
-    pub r_max: f64,
-    pub U_max: f64,
-    pub U_min: f64,
-    pub T_U: f64,
-    pub T_chi: f64,
+    pub draft: f32,
+    pub length: f32,
+    pub width: f32,
+    pub r_max: f32,
+    pub U_max: f32,
+    pub U_min: f32,
+    pub T_U: f32,
+    pub T_chi: f32,
 }
 
 impl KinematicCSOGParams {
@@ -109,9 +109,9 @@ pub trait ShipModel {
     type Params;
 
     fn new(params: Self::Params) -> Self;
-    fn dynamics(&mut self, xs: &Vector6<f64>, tau: &Vector3<f64>) -> Vector6<f64>;
-    fn erk4_step(&mut self, dt: f64, xs: &Vector6<f64>, tau: &Vector3<f64>) -> Vector6<f64>;
-    fn euler_step(&mut self, dt: f64, xs: &Vector6<f64>, tau: &Vector3<f64>) -> Vector6<f64>;
+    fn dynamics(&mut self, xs: &Vector6<f32>, tau: &Vector3<f32>) -> Vector6<f32>;
+    fn erk4_step(&mut self, dt: f32, xs: &Vector6<f32>, tau: &Vector3<f32>) -> Vector6<f32>;
+    fn euler_step(&mut self, dt: f32, xs: &Vector6<f32>, tau: &Vector3<f32>) -> Vector6<f32>;
     fn params(&self) -> Self::Params;
 }
 
@@ -136,28 +136,28 @@ impl ShipModel for Telemetron {
         self.params
     }
 
-    fn dynamics(&mut self, xs: &Vector6<f64>, tau: &Vector3<f64>) -> Vector6<f64> {
-        let mut eta: Vector3<f64> = xs.fixed_rows::<3>(0).into();
+    fn dynamics(&mut self, xs: &Vector6<f32>, tau: &Vector3<f32>) -> Vector6<f32> {
+        let mut eta: Vector3<f32> = xs.fixed_rows::<3>(0).into();
         eta[2] = utils::wrap_angle_to_pmpi(eta[2]);
-        let nu: Vector3<f64> = xs.fixed_rows::<3>(3).into();
+        let nu: Vector3<f32> = xs.fixed_rows::<3>(3).into();
 
         let Cmtrx = utils::Cmtrx(self.params.M, nu);
         let Dmtrx = utils::Dmtrx(self.params.D_l, self.params.D_q, self.params.D_c, nu);
 
-        let eta_dot: Vector3<f64> = (utils::Rmtrx(eta[2]) * nu).into();
-        let nu_dot: Vector3<f64> = (self.params.M_inv * (tau - Cmtrx * nu - Dmtrx * nu)).into();
-        let mut xs_dot: Vector6<f64> = Vector6::zeros();
+        let eta_dot: Vector3<f32> = (utils::Rmtrx(eta[2]) * nu).into();
+        let nu_dot: Vector3<f32> = (self.params.M_inv * (tau - Cmtrx * nu - Dmtrx * nu)).into();
+        let mut xs_dot: Vector6<f32> = Vector6::zeros();
         xs_dot.fixed_rows_mut::<3>(0).copy_from(&eta_dot);
         xs_dot.fixed_rows_mut::<3>(3).copy_from(&nu_dot);
         xs_dot
     }
 
-    fn erk4_step(&mut self, dt: f64, xs: &Vector6<f64>, tau: &Vector3<f64>) -> Vector6<f64> {
-        let k1: Vector6<f64> = self.dynamics(xs, tau);
-        let k2: Vector6<f64> = self.dynamics(&(xs + dt * k1 / 2.0), tau);
-        let k3: Vector6<f64> = self.dynamics(&(xs + dt * k2 / 2.0), tau);
-        let k4: Vector6<f64> = self.dynamics(&(xs + dt * k3), tau);
-        let mut xs_new: Vector6<f64> = xs + dt * (k1 + 2.0 * k2 + 2.0 * k3 + k4) / 6.0;
+    fn erk4_step(&mut self, dt: f32, xs: &Vector6<f32>, tau: &Vector3<f32>) -> Vector6<f32> {
+        let k1: Vector6<f32> = self.dynamics(xs, tau);
+        let k2: Vector6<f32> = self.dynamics(&(xs + dt * k1 / 2.0), tau);
+        let k3: Vector6<f32> = self.dynamics(&(xs + dt * k2 / 2.0), tau);
+        let k4: Vector6<f32> = self.dynamics(&(xs + dt * k3), tau);
+        let mut xs_new: Vector6<f32> = xs + dt * (k1 + 2.0 * k2 + 2.0 * k3 + k4) / 6.0;
         // println!("xs_new: {:?}", xs_new);
         xs_new[2] = utils::wrap_angle_to_pmpi(xs_new[2]);
         xs_new[3] = utils::saturate(xs_new[3], -self.params.U_max, self.params.U_max);
@@ -167,8 +167,8 @@ impl ShipModel for Telemetron {
         xs_new
     }
 
-    fn euler_step(&mut self, dt: f64, xs: &Vector6<f64>, tau: &Vector3<f64>) -> Vector6<f64> {
-        let mut xs_new: Vector6<f64> = xs + dt * self.dynamics(xs, tau);
+    fn euler_step(&mut self, dt: f32, xs: &Vector6<f32>, tau: &Vector3<f32>) -> Vector6<f32> {
+        let mut xs_new: Vector6<f32> = xs + dt * self.dynamics(xs, tau);
         // println!("xs_new: {:?}", xs_new);
         xs_new[2] = utils::wrap_angle_to_pmpi(xs_new[2]);
         xs_new[3] = utils::saturate(xs_new[3], -self.params.U_max, self.params.U_max);
@@ -183,8 +183,8 @@ pub struct KinematicCSOG {
     pub params: KinematicCSOGParams,
     pub n_x: usize,
     pub n_u: usize,
-    pub chi_d_prev: f64,
-    pub chi_prev: f64,
+    pub chi_d_prev: f32,
+    pub chi_prev: f32,
 }
 
 impl KinematicCSOG {
@@ -211,51 +211,51 @@ impl ShipModel for KinematicCSOG {
     }
 
     #[allow(non_snake_case)]
-    fn dynamics(&mut self, xs: &Vector6<f64>, tau: &Vector3<f64>) -> Vector6<f64> {
+    fn dynamics(&mut self, xs: &Vector6<f32>, tau: &Vector3<f32>) -> Vector6<f32> {
         let chi_d = tau[0];
         let U_d = tau[1];
-        let mut xs_dot: Vector6<f64> = Vector6::zeros();
+        let mut xs_dot: Vector6<f32> = Vector6::zeros();
 
         let chi_d_unwrapped = utils::unwrap_angle(self.chi_d_prev, chi_d);
         let chi_unwrapped = utils::unwrap_angle(self.chi_prev, xs[2]);
         let chi_diff = utils::wrap_angle_diff_to_pmpi(chi_d_unwrapped, chi_unwrapped);
         self.chi_d_prev = chi_d;
         self.chi_prev = xs[2];
-        xs_dot[0] = xs[3] * f64::cos(xs[2]);
-        xs_dot[1] = xs[3] * f64::sin(xs[2]);
+        xs_dot[0] = xs[3] * f32::cos(xs[2]);
+        xs_dot[1] = xs[3] * f32::sin(xs[2]);
         xs_dot[2] = chi_diff / self.params.T_chi;
         xs_dot[3] = (U_d - xs[3]) / self.params.T_U;
         xs_dot
     }
 
-    fn erk4_step(&mut self, dt: f64, xs: &Vector6<f64>, tau: &Vector3<f64>) -> Vector6<f64> {
-        let k1: Vector6<f64> = self.dynamics(xs, tau);
-        let k2: Vector6<f64> = self.dynamics(&(xs + dt * k1 / 2.0), tau);
-        let k3: Vector6<f64> = self.dynamics(&(xs + dt * k2 / 2.0), tau);
-        let k4: Vector6<f64> = self.dynamics(&(xs + dt * k3), tau);
-        let mut xs_new: Vector6<f64> = xs + dt * (k1 + 2.0 * k2 + 2.0 * k3 + k4) / 6.0;
+    fn erk4_step(&mut self, dt: f32, xs: &Vector6<f32>, tau: &Vector3<f32>) -> Vector6<f32> {
+        let k1: Vector6<f32> = self.dynamics(xs, tau);
+        let k2: Vector6<f32> = self.dynamics(&(xs + dt * k1 / 2.0), tau);
+        let k3: Vector6<f32> = self.dynamics(&(xs + dt * k2 / 2.0), tau);
+        let k4: Vector6<f32> = self.dynamics(&(xs + dt * k3), tau);
+        let mut xs_new: Vector6<f32> = xs + dt * (k1 + 2.0 * k2 + 2.0 * k3 + k4) / 6.0;
         // println!("xs_new: {:?}", xs_new);
-        let chi: f64 = f64::atan2(xs_new[4], xs_new[3]);
+        let chi: f32 = f32::atan2(xs_new[4], xs_new[3]);
         xs_new[2] = utils::wrap_angle_to_pmpi(xs_new[2]);
         xs_new[3] =
-            utils::saturate(xs_new[3], self.params.U_min, self.params.U_max) * f64::cos(chi);
+            utils::saturate(xs_new[3], self.params.U_min, self.params.U_max) * f32::cos(chi);
         xs_new[4] =
-            utils::saturate(xs_new[4], -self.params.U_max, self.params.U_max) * f64::sin(chi);
+            utils::saturate(xs_new[4], -self.params.U_max, self.params.U_max) * f32::sin(chi);
         xs_new[5] = utils::saturate(xs_new[5], -self.params.r_max, self.params.r_max);
         //println!("xs_new after sat: {:?}", xs_new);
         xs_new
     }
 
-    fn euler_step(&mut self, dt: f64, xs: &Vector6<f64>, tau: &Vector3<f64>) -> Vector6<f64> {
-        let mut xs_new: Vector6<f64> = xs + dt * self.dynamics(xs, tau);
+    fn euler_step(&mut self, dt: f32, xs: &Vector6<f32>, tau: &Vector3<f32>) -> Vector6<f32> {
+        let mut xs_new: Vector6<f32> = xs + dt * self.dynamics(xs, tau);
         // println!("xs_new: {:?}", xs_new);
 
-        let chi: f64 = f64::atan2(xs_new[4], xs_new[3]);
+        let chi: f32 = f32::atan2(xs_new[4], xs_new[3]);
         xs_new[2] = utils::wrap_angle_to_pmpi(xs_new[2]);
         xs_new[3] =
-            utils::saturate(xs_new[3], self.params.U_min, self.params.U_max) * f64::cos(chi);
+            utils::saturate(xs_new[3], self.params.U_min, self.params.U_max) * f32::cos(chi);
         xs_new[4] =
-            utils::saturate(xs_new[4], -self.params.U_max, self.params.U_max) * f64::sin(chi);
+            utils::saturate(xs_new[4], -self.params.U_max, self.params.U_max) * f32::sin(chi);
         xs_new[5] = utils::saturate(xs_new[5], -self.params.r_max, self.params.r_max);
         //println!("xs_new after sat: {:?}", xs_new);
         xs_new

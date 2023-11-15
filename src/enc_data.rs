@@ -6,8 +6,7 @@
 //! ## Usage
 //! Relies on transferring ENC data from python to rust using pyo3
 use geo::{
-    coord, point, BoundingRect, Contains, EuclideanDistance, HasDimensions, Intersects, LineString,
-    MultiPolygon, Polygon, Rect,
+    coord, point, Contains, EuclideanDistance, Intersects, LineString, MultiPolygon, Polygon, Rect,
 };
 use nalgebra::{Vector2, Vector6};
 use pyo3::prelude::*;
@@ -16,9 +15,10 @@ use std::fs::File;
 #[pyclass]
 #[derive(Clone, Debug)]
 pub struct ENCData {
-    pub hazards: MultiPolygon<f64>,
-    pub safe_sea_triangulation: Vec<Polygon<f64>>,
-    pub bbox: Rect<f64>,
+    pub hazards: MultiPolygon<f32>,
+    pub safe_sea_triangulation: Vec<Polygon<f32>>,
+    pub safe_sea_triangulation_weights: Vec<f32>,
+    pub bbox: Rect<f32>,
 }
 
 #[pymethods]
@@ -27,10 +27,12 @@ impl ENCData {
     pub fn py_new() -> Self {
         let hazards = MultiPolygon(vec![]);
         let safe_sea_triangulation = vec![];
+        let safe_sea_triangulation_weights = vec![];
         let bbox = Rect::new(coord! {x: 0.0, y: 0.0}, coord! {x: 0.0, y: 0.0});
         Self {
             hazards,
             safe_sea_triangulation,
+            safe_sea_triangulation_weights,
             bbox,
         }
     }
@@ -41,7 +43,7 @@ impl ENCData {
     }
 
     pub fn transfer_bbox(&mut self, bbox: &PyTuple) -> PyResult<()> {
-        let bbox = bbox.extract::<(f64, f64, f64, f64)>()?;
+        let bbox = bbox.extract::<(f32, f32, f32, f32)>()?;
         self.bbox = Rect::new(coord! {x: bbox.1, y: bbox.0}, coord! {x: bbox.3, y: bbox.2});
         Ok(())
     }
@@ -68,9 +70,13 @@ impl ENCData {
         let mut poly_vec = vec![];
         for py_poly in py_safe_sea_triangulation {
             let polygon = self.transfer_polygon(py_poly)?;
-            poly_vec.push(polygon);
+            poly_vec.push(polygon.clone());
+            self.safe_sea_triangulation_weights
+                .push(geo::Area::unsigned_area(&polygon.clone()));
+            //println!("Area: {:?}", geo::Area::unsigned_area(&polygon));
         }
         self.safe_sea_triangulation = poly_vec;
+
         self.save_triangulation_to_json()?;
         Ok(())
     }
@@ -99,6 +105,11 @@ impl ENCData {
             &self.safe_sea_triangulation,
         )
         .unwrap();
+        serde_json::to_writer_pretty(
+            &File::create(rust_root.join("data/safe_sea_triangulation_weights.json"))?,
+            &self.safe_sea_triangulation_weights,
+        )
+        .unwrap();
         Ok(())
     }
 
@@ -122,13 +133,17 @@ impl ENCData {
         let safe_sea_triangulation_file =
             File::open(rust_root.join("data/safe_sea_triangulation.json")).unwrap();
         self.safe_sea_triangulation = serde_json::from_reader(safe_sea_triangulation_file).unwrap();
+        let safe_sea_triangulation_weights_file =
+            File::open(rust_root.join("data/safe_sea_triangulation_weights.json")).unwrap();
+        self.safe_sea_triangulation_weights =
+            serde_json::from_reader(safe_sea_triangulation_weights_file).unwrap();
         Ok(())
     }
 }
 
 impl ENCData {
     /// Check if a point is inside the ENC Hazards
-    pub fn inside_hazards(&self, p: &Vector2<f64>) -> bool {
+    pub fn inside_hazards(&self, p: &Vector2<f32>) -> bool {
         if self.is_empty() {
             return false;
         }
@@ -136,7 +151,7 @@ impl ENCData {
         self.hazards.contains(&point)
     }
 
-    pub fn inside_bbox(&self, p: &Vector2<f64>) -> bool {
+    pub fn inside_bbox(&self, p: &Vector2<f32>) -> bool {
         if self.is_empty() {
             return true;
         }
@@ -144,16 +159,16 @@ impl ENCData {
         self.bbox.contains(&point)
     }
 
-    pub fn intersects_with_linestring(&self, linestring: &LineString<f64>) -> bool {
+    pub fn intersects_with_linestring(&self, linestring: &LineString<f32>) -> bool {
         linestring.intersects(&self.hazards)
     }
 
-    pub fn intersects_with_segment(&self, p1: &Vector2<f64>, p2: &Vector2<f64>) -> bool {
+    pub fn intersects_with_segment(&self, p1: &Vector2<f32>, p2: &Vector2<f32>) -> bool {
         let line = LineString(vec![coord![x: p1[0], y: p1[1]], coord![x: p2[0], y: p2[1]]]);
         self.intersects_with_linestring(&line)
     }
 
-    pub fn intersects_with_trajectory(&self, xs_array: &Vec<Vector6<f64>>) -> bool {
+    pub fn intersects_with_trajectory(&self, xs_array: &Vec<Vector6<f32>>) -> bool {
         let traj_linestring = if xs_array.len() > 50 {
             LineString(
                 xs_array
@@ -169,7 +184,7 @@ impl ENCData {
         intersect
     }
 
-    pub fn array_inside_bbox(&self, xs_array: &Vec<Vector6<f64>>) -> bool {
+    pub fn array_inside_bbox(&self, xs_array: &Vec<Vector6<f32>>) -> bool {
         let x_min = self.bbox.min().x;
         let x_max = self.bbox.max().x;
         let y_min = self.bbox.min().y;
@@ -185,13 +200,15 @@ impl ENCData {
     }
 
     /// Calculate the distance from a point to the closest point on the ENC
-    pub fn dist2point(&self, p: &Vector2<f64>) -> f64 {
+    pub fn dist2point(&self, p: &Vector2<f32>) -> f32 {
         if self.is_empty() {
             println!("ENCData is empty");
             return -1.0;
         }
         let point = point![x: p[0], y: p[1]];
+        println!("hazards1: {:?}", self.hazards.0[1].exterior().0[0]);
         let dist2hazards = point.euclidean_distance(&self.hazards);
+        println!("p: {:?}| dist2hazards: {:?} ", p, dist2hazards);
         // println!("dist2hazards: {:?}", dist2hazards);
         dist2hazards
     }
@@ -199,7 +216,7 @@ impl ENCData {
     /// Care only about the polygon exterior ring, as this is the only relevant part
     /// for vessel trajectory planning. The polygons are assumed to have coordinates
     /// in the form (east, north)
-    pub fn transfer_polygon(&self, py_poly: &PyAny) -> PyResult<Polygon<f64>> {
+    pub fn transfer_polygon(&self, py_poly: &PyAny) -> PyResult<Polygon<f32>> {
         let exterior = py_poly.getattr("exterior").unwrap().extract::<&PyAny>()?;
         let exterior_coords = exterior
             .getattr("coords")
@@ -208,7 +225,7 @@ impl ENCData {
 
         let mut exterior_vec = vec![];
         for coord in exterior_coords {
-            let coord_tuple = coord.extract::<(f64, f64)>().unwrap();
+            let coord_tuple = coord.extract::<(f32, f32)>().unwrap();
             exterior_vec.push(coord![x:coord_tuple.1, y:coord_tuple.0]);
         }
         Ok(Polygon::new(
@@ -217,7 +234,7 @@ impl ENCData {
         ))
     }
 
-    pub fn transfer_multipolygon(&self, py_multipoly: &PyAny) -> PyResult<MultiPolygon<f64>> {
+    pub fn transfer_multipolygon(&self, py_multipoly: &PyAny) -> PyResult<MultiPolygon<f32>> {
         let py_geoms = py_multipoly
             .getattr("geoms")
             .unwrap()
@@ -412,6 +429,37 @@ mod tests {
         })
     }
 
+    #[test]
+    fn test_distance_to_hazard() {
+        Python::with_gil(|py| {
+            let mut enc = ENCData::py_new();
+
+            let geometry = PyModule::import(py, "shapely.geometry").unwrap();
+            let poly_class = geometry.getattr("Polygon").unwrap();
+            let elements = vec![(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0), (0.0, 0.0)];
+            let pytuple_coords = PyList::new(py, elements);
+            let args = (pytuple_coords,);
+            let polygon = poly_class.call1(args).unwrap();
+
+            let multipoly_class = geometry.getattr("MultiPolygon").unwrap();
+            let py_poly_list = PyList::new(py, vec![polygon.clone()]);
+            let py_multipoly = multipoly_class.call1((py_poly_list,)).unwrap();
+
+            enc.set_hazards(py_multipoly).unwrap();
+
+            let point1 = point! {x: -2.0, y: 2.0};
+            let point2 = point! {x: 2.0, y:-2.0};
+
+            println!("Point1: {:?}", point1);
+            println!("Point2: {:?}", point2);
+            println!("Multipolygons: {:?}", enc.hazards.0);
+            println!("Multipolygon interior: {:?}", enc.hazards.0);
+            let d2hazard1 = point1.euclidean_distance(&enc.hazards);
+            let d2hazard2 = point2.euclidean_distance(&enc.hazards);
+
+            println!("d2point1: {:?} | d2point2: {:?}", d2hazard1, d2hazard2);
+        })
+    }
     #[test]
     fn test_load_and_save_hazards_from_json() {
         let mut enc = ENCData::py_new();

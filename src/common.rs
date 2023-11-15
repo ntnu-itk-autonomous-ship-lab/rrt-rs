@@ -13,22 +13,22 @@ use std::fs::File;
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct RRTNode {
     pub id: Option<NodeId>,
-    pub cost: f64,
-    pub d2land: f64, // Not used as of now, but could be interesting to use in the RRT-cost.
-    pub state: Vector6<f64>,
-    pub trajectory: Vec<Vector6<f64>>, // Trajectory from parent to this node
-    pub controls: Vec<Vector3<f64>>,   // Control inputs from parent to this node
-    pub time: f64,
+    pub cost: f32,
+    pub d2land: f32, // Not used as of now, but could be interesting to use in the RRT-cost.
+    pub state: Vector6<f32>,
+    pub trajectory: Vec<Vector6<f32>>, // Trajectory from parent to this node
+    pub controls: Vec<Vector3<f32>>,   // Control inputs from parent to this node
+    pub time: f32,
 }
 
 impl RRTNode {
     pub fn new(
-        state: Vector6<f64>,
-        trajectory: Vec<Vector6<f64>>,
-        controls: Vec<Vector3<f64>>,
-        cost: f64,
-        d2land: f64,
-        time: f64,
+        state: Vector6<f32>,
+        trajectory: Vec<Vector6<f32>>,
+        controls: Vec<Vector3<f32>>,
+        cost: f32,
+        d2land: f32,
+        time: f32,
     ) -> Self {
         Self {
             id: None,
@@ -45,17 +45,17 @@ impl RRTNode {
         self.id = Some(id);
     }
 
-    pub fn point(&self) -> [f64; 2] {
+    pub fn point(&self) -> [f32; 2] {
         [self.state[0], self.state[1]]
     }
 
-    pub fn vec2d(&self) -> Vector2<f64> {
+    pub fn vec2d(&self) -> Vector2<f32> {
         Vector2::new(self.state[0], self.state[1])
     }
 }
 
 impl RTreeObject for RRTNode {
-    type Envelope = AABB<[f64; 2]>;
+    type Envelope = AABB<[f32; 2]>;
 
     fn envelope(&self) -> Self::Envelope {
         AABB::from_point(self.point())
@@ -63,7 +63,7 @@ impl RTreeObject for RRTNode {
 }
 
 impl PointDistance for RRTNode {
-    fn distance_2(&self, point: &[f64; 2]) -> f64 {
+    fn distance_2(&self, point: &[f32; 2]) -> f32 {
         let x = self.state[0] - point[0];
         let y = self.state[1] - point[1];
         x * x + y * y
@@ -72,15 +72,15 @@ impl PointDistance for RRTNode {
 
 #[derive(Debug, Clone, FromPyObject, Serialize, Deserialize)]
 pub struct RRTResult {
-    pub waypoints: Vec<[f64; 3]>,
-    pub states: Vec<[f64; 6]>,
-    pub inputs: Vec<[f64; 3]>,
-    pub times: Vec<f64>,
-    pub cost: f64,
+    pub waypoints: Vec<[f32; 3]>,
+    pub states: Vec<[f32; 6]>,
+    pub inputs: Vec<[f32; 3]>,
+    pub times: Vec<f32>,
+    pub cost: f32,
 }
 
 impl RRTResult {
-    pub fn new(solution: (Vec<[f64; 3]>, Vec<[f64; 6]>, Vec<[f64; 3]>, Vec<f64>, f64)) -> Self {
+    pub fn new(solution: (Vec<[f32; 3]>, Vec<[f32; 6]>, Vec<[f32; 3]>, Vec<f32>, f32)) -> Self {
         Self {
             waypoints: solution.0,
             states: solution.1,

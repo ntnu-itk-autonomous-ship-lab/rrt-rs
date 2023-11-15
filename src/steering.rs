@@ -3,42 +3,28 @@
 //!
 use crate::model::{KinematicCSOG, ShipModel, Telemetron, TelemetronParams};
 use crate::utils;
-use nalgebra::Vector6;
-use nalgebra::{distance, Vector2, Vector3};
-use pyo3::prelude::*;
+use dubins_paths::{DubinsPath, PosRot, Result as DubinsResult};
+use nalgebra::{Vector, Vector6};
+use nalgebra::{Vector2, Vector3};
 use pyo3::FromPyObject;
 use serde::{Deserialize, Serialize};
-use std::f64;
+use std::f32;
 
 #[allow(non_snake_case)]
 pub trait Steering {
     fn steer(
         &mut self,
-        xs_start: &Vector6<f64>,
-        xs_goal: &Vector6<f64>,
-        U_d: f64,
-        acceptance_radius: f64,
-        time_step: f64,
-        max_steering_time: f64,
+        xs_start: &Vector6<f32>,
+        xs_goal: &Vector6<f32>,
+        U_d: f32,
+        acceptance_radius: f32,
+        time_step: f32,
+        max_steering_time: f32,
     ) -> (
-        Vec<Vector6<f64>>,
-        Vec<Vector3<f64>>,
-        Vec<(f64, f64)>,
-        Vec<f64>,
-        bool,
-    );
-
-    fn steer_through_waypoints(
-        &mut self,
-        xs_start: &Vector6<f64>,
-        waypoints: &Vec<Vector3<f64>>,
-        acceptance_radius: f64,
-        time_step: f64,
-    ) -> (
-        Vec<Vector6<f64>>,
-        Vec<Vector3<f64>>,
-        Vec<(f64, f64)>,
-        Vec<f64>,
+        Vec<Vector6<f32>>,
+        Vec<Vector3<f32>>,
+        Vec<(f32, f32)>,
+        Vec<f32>,
         bool,
     );
 }
@@ -46,9 +32,9 @@ pub trait Steering {
 #[allow(non_snake_case)]
 #[derive(FromPyObject, Serialize, Deserialize, Debug, Clone, Copy)]
 pub struct LOSGuidanceParams {
-    K_p: f64,
-    K_i: f64,
-    max_cross_track_error_int: f64,
+    K_p: f32,
+    K_i: f32,
+    max_cross_track_error_int: f32,
 }
 
 impl LOSGuidanceParams {
@@ -65,7 +51,7 @@ impl LOSGuidanceParams {
 #[allow(non_snake_case)]
 pub struct LOSGuidance {
     pub params: LOSGuidanceParams,
-    pub cross_track_error_int: f64,
+    pub cross_track_error_int: f32,
 }
 
 #[allow(non_snake_case)]
@@ -83,15 +69,15 @@ impl LOSGuidance {
 
     pub fn compute_refs(
         &mut self,
-        xs_now: &Vector6<f64>,
-        xs_start: &Vector6<f64>,
-        xs_goal: &Vector6<f64>,
-        U_d: f64,
-        dt: f64,
-    ) -> (f64, f64) {
+        xs_now: &Vector6<f32>,
+        xs_start: &Vector6<f32>,
+        xs_goal: &Vector6<f32>,
+        U_d: f32,
+        dt: f32,
+    ) -> (f32, f32) {
         let alpha = (xs_goal[1] - xs_start[1]).atan2(xs_goal[0] - xs_start[0]);
-        let cross_track_error = -(xs_now[0] - xs_goal[0]) * f64::sin(alpha)
-            + (xs_now[1] - xs_goal[1]) * f64::cos(alpha);
+        let cross_track_error = -(xs_now[0] - xs_goal[0]) * f32::sin(alpha)
+            + (xs_now[1] - xs_goal[1]) * f32::cos(alpha);
 
         if cross_track_error.abs() <= self.cross_track_error_int {
             self.cross_track_error_int += cross_track_error * dt;
@@ -110,19 +96,19 @@ impl LOSGuidance {
 
 #[allow(non_snake_case)]
 pub struct FLSHController {
-    K_p_u: f64,
-    K_i_u: f64,
-    K_p_psi: f64,
-    K_d_psi: f64,
-    K_i_psi: f64,
-    max_U_error_int: f64,
-    U_error_int: f64,
-    U_error_int_threshold: f64,
-    max_psi_error_int: f64,
-    psi_error_int_threshold: f64,
-    psi_error_int: f64,
-    psi_d_prev: f64,
-    psi_prev: f64,
+    K_p_u: f32,
+    K_i_u: f32,
+    K_p_psi: f32,
+    K_d_psi: f32,
+    K_i_psi: f32,
+    max_U_error_int: f32,
+    U_error_int: f32,
+    U_error_int_threshold: f32,
+    max_psi_error_int: f32,
+    psi_error_int_threshold: f32,
+    psi_error_int: f32,
+    psi_d_prev: f32,
+    psi_prev: f32,
 }
 
 #[allow(non_snake_case)]
@@ -137,8 +123,8 @@ impl FLSHController {
             max_U_error_int: 0.75,
             U_error_int: 0.0,
             U_error_int_threshold: 0.2,
-            max_psi_error_int: 20.0 * f64::consts::PI / 180.0,
-            psi_error_int_threshold: 10.0 * f64::consts::PI / 180.0,
+            max_psi_error_int: 20.0 * f32::consts::PI / 180.0,
+            psi_error_int_threshold: 10.0 * f32::consts::PI / 180.0,
             psi_error_int: 0.0,
             psi_d_prev: 0.0,
             psi_prev: 0.0,
@@ -154,16 +140,16 @@ impl FLSHController {
 
     fn compute_inputs(
         &mut self,
-        refs: &(f64, f64),
-        xs: &Vector6<f64>,
-        dt: f64,
+        refs: &(f32, f32),
+        xs: &Vector6<f32>,
+        dt: f32,
         model_params: &TelemetronParams,
-    ) -> Vector3<f64> {
-        let psi: f64 = utils::wrap_angle_to_pmpi(xs[2]);
+    ) -> Vector3<f32> {
+        let psi: f32 = utils::wrap_angle_to_pmpi(xs[2]);
         let psi_unwrapped = utils::unwrap_angle(self.psi_prev, psi);
-        let psi_d: f64 = refs.0;
+        let psi_d: f32 = refs.0;
         let psi_d_unwrapped = utils::unwrap_angle(self.psi_d_prev, psi_d);
-        let psi_error: f64 = utils::wrap_angle_diff_to_pmpi(psi_d_unwrapped, psi_unwrapped);
+        let psi_error: f32 = utils::wrap_angle_diff_to_pmpi(psi_d_unwrapped, psi_unwrapped);
         // if (psi_d < 0.0 && psi > 0.0) || (psi_d > 0.0 && psi < 0.0) {
         //     println!("psi_d={psi_d} | psi_d_unwrapped={psi_d_unwrapped} | psi={psi} | psi_unwrapped={psi_unwrapped} | psi_error={psi_error}");
         // }
@@ -178,9 +164,9 @@ impl FLSHController {
 
         self.psi_error_int = utils::wrap_angle_to_pmpi(self.psi_error_int);
 
-        let U: f64 = f64::sqrt(xs[3].powi(2) + xs[4].powi(2));
-        let U_d: f64 = refs.1;
-        let U_error: f64 = U_d - U;
+        let U: f32 = f32::sqrt(xs[3].powi(2) + xs[4].powi(2));
+        let U_d: f32 = refs.1;
+        let U_error: f32 = U_d - U;
         if self.U_error_int.abs() > self.max_U_error_int {
             self.U_error_int -= U_error * dt;
         }
@@ -188,20 +174,20 @@ impl FLSHController {
             self.U_error_int += U_error * dt;
         }
 
-        let r: f64 = xs[5];
+        let r: f32 = xs[5];
 
-        let nu: Vector3<f64> = xs.fixed_rows::<3>(3).into();
-        let Cvv: Vector3<f64> = utils::Cmtrx(model_params.M, nu) * nu;
-        let Dvv: Vector3<f64> =
+        let nu: Vector3<f32> = xs.fixed_rows::<3>(3).into();
+        let Cvv: Vector3<f32> = utils::Cmtrx(model_params.M, nu) * nu;
+        let Dvv: Vector3<f32> =
             utils::Dmtrx(model_params.D_l, model_params.D_q, model_params.D_c, nu) * nu;
-        let Fx: f64 = Cvv[0]
+        let Fx: f32 = Cvv[0]
             + Dvv[0]
             + model_params.M[(0, 0)] * (self.K_p_u * U_error + self.K_i_u * self.U_error_int);
         let Fx = utils::saturate(Fx, model_params.Fx_limits[0], model_params.Fx_limits[1]);
-        let Fy: f64 = -(model_params.M[(2, 2)] / model_params.l_r)
+        let Fy: f32 = -(model_params.M[(2, 2)] / model_params.l_r)
             * (self.K_p_psi * psi_error - self.K_d_psi * r + self.K_i_psi * self.psi_error_int);
         let Fy = utils::saturate(Fy, model_params.Fy_limits[0], model_params.Fy_limits[1]);
-        let mut tau: Vector3<f64> = Vector3::new(Fx, Fy, -Fy * model_params.l_r);
+        let mut tau: Vector3<f32> = Vector3::new(Fx, Fy, -Fy * model_params.l_r);
         tau[0] = utils::saturate(tau[0], model_params.Fx_limits[0], model_params.Fx_limits[1]);
         tau[1] = utils::saturate(tau[1], model_params.Fy_limits[0], model_params.Fy_limits[1]);
         tau[2] = utils::saturate(
@@ -220,17 +206,17 @@ impl FLSHController {
     }
 }
 
-pub struct SimpleSteering<M: ShipModel> {
+pub struct LOSSteering<M: ShipModel> {
     pub los_guidance: LOSGuidance,
     pub flsh_controller: FLSHController,
     pub ship_model: M,
 }
 
-impl<M: ShipModel> SimpleSteering<M> {
+impl<M: ShipModel> LOSSteering<M> {
     pub fn new(
         los_params: LOSGuidanceParams,
         model_params: <M as ShipModel>::Params,
-    ) -> SimpleSteering<M> {
+    ) -> LOSSteering<M> {
         Self {
             los_guidance: LOSGuidance::new(los_params),
             flsh_controller: FLSHController::new(),
@@ -240,92 +226,25 @@ impl<M: ShipModel> SimpleSteering<M> {
 }
 
 #[allow(non_snake_case)]
-impl Steering for SimpleSteering<Telemetron> {
-    fn steer(
+impl LOSSteering<Telemetron> {
+    pub fn steer_through_waypoints(
         &mut self,
-        xs_start: &Vector6<f64>,
-        xs_goal: &Vector6<f64>,
-        U_d: f64,
-        acceptance_radius: f64,
-        time_step: f64,
-        max_steering_time: f64,
+        xs_start: &Vector6<f32>,
+        waypoints: &Vec<Vector3<f32>>,
+        acceptance_radius: f32,
+        time_step: f32,
     ) -> (
-        Vec<Vector6<f64>>,
-        Vec<Vector3<f64>>,
-        Vec<(f64, f64)>,
-        Vec<f64>,
-        bool,
-    ) {
-        let mut time = 0.0;
-        let mut t_array = vec![];
-        let mut xs_array: Vec<Vector6<f64>> = vec![xs_start.clone()];
-        let mut u_array: Vec<Vector3<f64>> = vec![];
-        let mut refs_array: Vec<(f64, f64)> = vec![];
-        let mut xs_next = xs_start.clone();
-        let mut reached_goal = false;
-        self.los_guidance.reset();
-        self.flsh_controller.reset();
-        //println!("xs_start: {:?} | xs_goal: {:?}", xs_start, xs_goal);
-        while time <= max_steering_time {
-            let refs: (f64, f64) = self
-                .los_guidance
-                .compute_refs(&xs_next, xs_start, xs_goal, U_d, time_step);
-
-            let tau: Vector3<f64> = self.flsh_controller.compute_inputs(
-                &refs,
-                &xs_next,
-                time_step,
-                &self.ship_model.params(),
-            );
-            xs_next = self.ship_model.erk4_step(time_step, &xs_next, &tau);
-
-            refs_array.push(refs);
-            u_array.push(tau);
-            t_array.push(time.clone());
-            time += time_step;
-
-            xs_array.push(xs_next);
-            // Break if inside final waypoint acceptance radius
-            let dist2goal_vec = Vector2::new(xs_goal[0] - xs_next[0], xs_goal[1] - xs_next[1]);
-            let dist2goal = dist2goal_vec.norm();
-            let L_wp_seg =
-                Vector2::new(xs_goal[0] - xs_start[0], xs_goal[1] - xs_start[1]).normalize();
-            let segment_passed =
-                L_wp_seg.dot(&dist2goal_vec.normalize()) < f64::cos(utils::deg2rad(90.0));
-            if dist2goal <= acceptance_radius {
-                reached_goal = true;
-                // refs_array.push(refs);
-                // u_array.push(tau);
-                // t_array.push(time.clone());
-                break;
-            }
-
-            if segment_passed {
-                break; // Break if segment passed => failed to reach goal
-            }
-        }
-        //println!("xs_next: {:?} | time: {:.2}", xs_next, time);
-        (xs_array, u_array, refs_array, t_array, reached_goal)
-    }
-
-    fn steer_through_waypoints(
-        &mut self,
-        xs_start: &Vector6<f64>,
-        waypoints: &Vec<Vector3<f64>>,
-        acceptance_radius: f64,
-        time_step: f64,
-    ) -> (
-        Vec<Vector6<f64>>,
-        Vec<Vector3<f64>>,
-        Vec<(f64, f64)>,
-        Vec<f64>,
+        Vec<Vector6<f32>>,
+        Vec<Vector3<f32>>,
+        Vec<(f32, f32)>,
+        Vec<f32>,
         bool,
     ) {
         let radius = acceptance_radius;
-        let mut t_array: Vec<f64> = Vec::new();
-        let mut xs_array: Vec<Vector6<f64>> = Vec::new();
-        let mut u_array: Vec<Vector3<f64>> = Vec::new();
-        let mut refs_array: Vec<(f64, f64)> = Vec::new();
+        let mut t_array: Vec<f32> = Vec::new();
+        let mut xs_array: Vec<Vector6<f32>> = Vec::new();
+        let mut u_array: Vec<Vector3<f32>> = Vec::new();
+        let mut refs_array: Vec<(f32, f32)> = Vec::new();
         let mut reached_last = false;
         let n_wps = waypoints.len();
         assert_eq!(n_wps > 1, true);
@@ -353,11 +272,11 @@ impl Steering for SimpleSteering<Telemetron> {
             );
             let U_d_seg = waypoints[wp_idx + 1][2];
 
-            let refs: (f64, f64) =
+            let refs: (f32, f32) =
                 self.los_guidance
                     .compute_refs(&xs_current, &wp_prev, &wp, U_d_seg, time_step);
 
-            let tau: Vector3<f64> = self.flsh_controller.compute_inputs(
+            let tau: Vector3<f32> = self.flsh_controller.compute_inputs(
                 &refs,
                 &xs_current,
                 time_step,
@@ -376,7 +295,7 @@ impl Steering for SimpleSteering<Telemetron> {
             let L_wp_seg = Vector2::new(wp[0] - wp_prev[0], wp[1] - wp_prev[1]).normalize();
             let dist2wp = dist2wp_vec.norm();
             let segment_passed =
-                L_wp_seg.dot(&dist2wp_vec.normalize()) < f64::cos(utils::deg2rad(90.0));
+                L_wp_seg.dot(&dist2wp_vec.normalize()) < f32::cos(utils::deg2rad(90.0));
             if dist2wp <= acceptance_radius || segment_passed {
                 wp_idx += 1;
             }
@@ -394,85 +313,24 @@ impl Steering for SimpleSteering<Telemetron> {
 }
 
 #[allow(non_snake_case)]
-impl Steering for SimpleSteering<KinematicCSOG> {
-    fn steer(
+impl LOSSteering<KinematicCSOG> {
+    pub fn steer_through_waypoints(
         &mut self,
-        xs_start: &Vector6<f64>,
-        xs_goal: &Vector6<f64>,
-        U_d: f64,
-        acceptance_radius: f64,
-        time_step: f64,
-        max_steering_time: f64,
+        xs_start: &Vector6<f32>,
+        waypoints: &Vec<Vector3<f32>>,
+        acceptance_radius: f32,
+        time_step: f32,
     ) -> (
-        Vec<Vector6<f64>>,
-        Vec<Vector3<f64>>,
-        Vec<(f64, f64)>,
-        Vec<f64>,
+        Vec<Vector6<f32>>,
+        Vec<Vector3<f32>>,
+        Vec<(f32, f32)>,
+        Vec<f32>,
         bool,
     ) {
-        let mut time = 0.0;
-        let mut t_array = vec![];
-        let mut xs_array: Vec<Vector6<f64>> = vec![xs_start.clone()];
-        let mut u_array: Vec<Vector3<f64>> = vec![];
-        let mut refs_array: Vec<(f64, f64)> = vec![];
-        let mut xs_next = xs_start.clone();
-        let mut reached_goal = false;
-        //println!("xs_start: {:?} | xs_goal: {:?}", xs_start, xs_goal);
-        self.ship_model.reset();
-        while time <= max_steering_time {
-            let refs: (f64, f64) = self
-                .los_guidance
-                .compute_refs(&xs_next, xs_start, xs_goal, U_d, time_step);
-
-            let tau: Vector3<f64> = Vector3::new(refs.0, refs.1, 0.0);
-            xs_next = self.ship_model.erk4_step(time_step, &xs_next, &tau);
-
-            refs_array.push(refs);
-            u_array.push(tau);
-            t_array.push(time.clone());
-            time += time_step;
-
-            xs_array.push(xs_next);
-            // Break if inside final waypoint acceptance radius
-            let dist2goal_vec = Vector2::new(xs_goal[0] - xs_next[0], xs_goal[1] - xs_next[1]);
-            let dist2goal = dist2goal_vec.norm();
-            let L_wp_seg =
-                Vector2::new(xs_goal[0] - xs_start[0], xs_goal[1] - xs_start[1]).normalize();
-            let segment_passed =
-                L_wp_seg.dot(&dist2goal_vec.normalize()) < f64::cos(utils::deg2rad(90.0));
-            if dist2goal <= acceptance_radius {
-                reached_goal = true;
-                // refs_array.push(refs);
-                // u_array.push(tau);
-                // t_array.push(time.clone());
-                break;
-            }
-
-            if segment_passed {
-                break; // Break if segment passed => failed to reach goal
-            }
-        }
-        //println!("xs_next: {:?} | time: {:.2}", xs_next, time);
-        (xs_array, u_array, refs_array, t_array, reached_goal)
-    }
-
-    fn steer_through_waypoints(
-        &mut self,
-        xs_start: &Vector6<f64>,
-        waypoints: &Vec<Vector3<f64>>,
-        acceptance_radius: f64,
-        time_step: f64,
-    ) -> (
-        Vec<Vector6<f64>>,
-        Vec<Vector3<f64>>,
-        Vec<(f64, f64)>,
-        Vec<f64>,
-        bool,
-    ) {
-        let mut t_array: Vec<f64> = Vec::new();
-        let mut xs_array: Vec<Vector6<f64>> = Vec::new();
-        let mut u_array: Vec<Vector3<f64>> = Vec::new();
-        let mut refs_array: Vec<(f64, f64)> = Vec::new();
+        let mut t_array: Vec<f32> = Vec::new();
+        let mut xs_array: Vec<Vector6<f32>> = Vec::new();
+        let mut u_array: Vec<Vector3<f32>> = Vec::new();
+        let mut refs_array: Vec<(f32, f32)> = Vec::new();
         let mut reached_last = false;
         let n_wps = waypoints.len();
         assert_eq!(n_wps > 1, true);
@@ -500,11 +358,11 @@ impl Steering for SimpleSteering<KinematicCSOG> {
             );
             let U_d_seg = waypoints[wp_idx + 1][2];
 
-            let refs: (f64, f64) =
+            let refs: (f32, f32) =
                 self.los_guidance
                     .compute_refs(&xs_current, &wp_prev, &wp, U_d_seg, time_step);
 
-            let tau: Vector3<f64> = Vector3::new(refs.0, refs.1, 0.0);
+            let tau: Vector3<f32> = Vector3::new(refs.0, refs.1, 0.0);
             xs_current = self.ship_model.erk4_step(time_step, &xs_current, &tau);
 
             refs_array.push(refs);
@@ -517,7 +375,7 @@ impl Steering for SimpleSteering<KinematicCSOG> {
             let L_wp_seg = Vector2::new(wp[0] - wp_prev[0], wp[1] - wp_prev[1]).normalize();
             let dist2wp = dist2wp_vec.norm();
             let segment_passed =
-                L_wp_seg.dot(&dist2wp_vec.normalize()) < f64::cos(utils::deg2rad(90.0));
+                L_wp_seg.dot(&dist2wp_vec.normalize()) < f32::cos(utils::deg2rad(90.0));
             // println!(
             //     "chi_diff: {:.2} | d2wp: {:.2} | L.dot(d2wp): {:.2} | segment_passed: {:?}",
             //     utils::rad2deg(utils::wrap_angle_diff_to_pmpi(refs.0, xs_current[2])),
@@ -551,15 +409,288 @@ impl Steering for SimpleSteering<KinematicCSOG> {
     }
 }
 
+#[allow(non_snake_case)]
+impl Steering for LOSSteering<Telemetron> {
+    fn steer(
+        &mut self,
+        xs_start: &Vector6<f32>,
+        xs_goal: &Vector6<f32>,
+        U_d: f32,
+        acceptance_radius: f32,
+        time_step: f32,
+        max_steering_time: f32,
+    ) -> (
+        Vec<Vector6<f32>>,
+        Vec<Vector3<f32>>,
+        Vec<(f32, f32)>,
+        Vec<f32>,
+        bool,
+    ) {
+        let mut time = 0.0;
+        let mut t_array = vec![];
+        let mut xs_array: Vec<Vector6<f32>> = vec![xs_start.clone()];
+        let mut u_array: Vec<Vector3<f32>> = vec![];
+        let mut refs_array: Vec<(f32, f32)> = vec![];
+        let mut xs_next = xs_start.clone();
+        let mut reached_goal = false;
+        self.los_guidance.reset();
+        self.flsh_controller.reset();
+        //println!("xs_start: {:?} | xs_goal: {:?}", xs_start, xs_goal);
+        while time <= max_steering_time {
+            let refs: (f32, f32) = self
+                .los_guidance
+                .compute_refs(&xs_next, xs_start, xs_goal, U_d, time_step);
+
+            let tau: Vector3<f32> = self.flsh_controller.compute_inputs(
+                &refs,
+                &xs_next,
+                time_step,
+                &self.ship_model.params(),
+            );
+            xs_next = self.ship_model.erk4_step(time_step, &xs_next, &tau);
+
+            refs_array.push(refs);
+            u_array.push(tau);
+            t_array.push(time.clone());
+            time += time_step;
+
+            xs_array.push(xs_next);
+            // Break if inside final waypoint acceptance radius
+            let dist2goal_vec = Vector2::new(xs_goal[0] - xs_next[0], xs_goal[1] - xs_next[1]);
+            let dist2goal = dist2goal_vec.norm();
+            let L_wp_seg =
+                Vector2::new(xs_goal[0] - xs_start[0], xs_goal[1] - xs_start[1]).normalize();
+            let segment_passed =
+                L_wp_seg.dot(&dist2goal_vec.normalize()) < f32::cos(utils::deg2rad(90.0));
+            if dist2goal <= acceptance_radius {
+                reached_goal = true;
+                // refs_array.push(refs);
+                // u_array.push(tau);
+                // t_array.push(time.clone());
+                break;
+            }
+
+            if segment_passed {
+                break; // Break if segment passed => failed to reach goal
+            }
+        }
+        //println!("xs_next: {:?} | time: {:.2}", xs_next, time);
+        (xs_array, u_array, refs_array, t_array, reached_goal)
+    }
+}
+
+#[allow(non_snake_case)]
+impl Steering for LOSSteering<KinematicCSOG> {
+    fn steer(
+        &mut self,
+        xs_start: &Vector6<f32>,
+        xs_goal: &Vector6<f32>,
+        U_d: f32,
+        acceptance_radius: f32,
+        time_step: f32,
+        max_steering_time: f32,
+    ) -> (
+        Vec<Vector6<f32>>,
+        Vec<Vector3<f32>>,
+        Vec<(f32, f32)>,
+        Vec<f32>,
+        bool,
+    ) {
+        let mut time = 0.0;
+        let mut t_array = vec![];
+        let mut xs_array: Vec<Vector6<f32>> = vec![xs_start.clone()];
+        let mut u_array: Vec<Vector3<f32>> = vec![];
+        let mut refs_array: Vec<(f32, f32)> = vec![];
+        let mut xs_next = xs_start.clone();
+        let mut reached_goal = false;
+        //println!("xs_start: {:?} | xs_goal: {:?}", xs_start, xs_goal);
+        self.ship_model.reset();
+        while time <= max_steering_time {
+            let refs: (f32, f32) = self
+                .los_guidance
+                .compute_refs(&xs_next, xs_start, xs_goal, U_d, time_step);
+
+            let tau: Vector3<f32> = Vector3::new(refs.0, refs.1, 0.0);
+            xs_next = self.ship_model.erk4_step(time_step, &xs_next, &tau);
+
+            refs_array.push(refs);
+            u_array.push(tau);
+            t_array.push(time.clone());
+            time += time_step;
+
+            xs_array.push(xs_next);
+            // Break if inside final waypoint acceptance radius
+            let dist2goal_vec = Vector2::new(xs_goal[0] - xs_next[0], xs_goal[1] - xs_next[1]);
+            let dist2goal = dist2goal_vec.norm();
+            let L_wp_seg =
+                Vector2::new(xs_goal[0] - xs_start[0], xs_goal[1] - xs_start[1]).normalize();
+            let segment_passed =
+                L_wp_seg.dot(&dist2goal_vec.normalize()) < f32::cos(utils::deg2rad(90.0));
+            if dist2goal <= acceptance_radius {
+                reached_goal = true;
+                // refs_array.push(refs);
+                // u_array.push(tau);
+                // t_array.push(time.clone());
+                break;
+            }
+
+            if segment_passed {
+                break; // Break if segment passed => failed to reach goal
+            }
+        }
+        //println!("xs_next: {:?} | time: {:.2}", xs_next, time);
+        (xs_array, u_array, refs_array, t_array, reached_goal)
+    }
+}
+
+pub struct DubinsSteering<M: ShipModel> {
+    pub ship_model: M,
+}
+
+impl<M: ShipModel> DubinsSteering<M> {
+    pub fn new(model_params: <M as ShipModel>::Params) -> DubinsSteering<M> {
+        Self {
+            ship_model: M::new(model_params),
+        }
+    }
+}
+
+#[allow(non_snake_case)]
+impl Steering for DubinsSteering<KinematicCSOG> {
+    fn steer(
+        &mut self,
+        xs_start: &Vector6<f32>,
+        xs_goal: &Vector6<f32>,
+        U_d: f32,
+        acceptance_radius: f32,
+        time_step: f32,
+        max_steering_time: f32,
+    ) -> (
+        Vec<Vector6<f32>>,
+        Vec<Vector3<f32>>,
+        Vec<(f32, f32)>,
+        Vec<f32>,
+        bool,
+    ) {
+        let mut t_array: Vec<f32> = Vec::new();
+        let mut xs_array: Vec<Vector6<f32>> = Vec::new();
+        let u_array: Vec<Vector3<f32>> = Vec::new();
+        let refs_array: Vec<(f32, f32)> = Vec::new();
+        let mut reached_last = false;
+
+        let q0 = PosRot::from_f32(
+            xs_start[0],
+            xs_start[1],
+            utils::wrap_angle_to_02pi(xs_start[2]),
+        );
+        let q1 = PosRot::from_f32(
+            xs_goal[0],
+            xs_goal[1],
+            utils::wrap_angle_to_02pi(xs_goal[2]),
+        );
+        let rho = U_d / self.ship_model.params().r_max;
+        let shortest_path = match DubinsPath::shortest_from(q0, q1, rho) {
+            Ok(path) => path,
+            Err(_) => return (xs_array, u_array, refs_array, t_array, reached_last),
+        };
+        reached_last = true;
+        let dist_step = U_d * time_step;
+        let samples = shortest_path.sample_many(0.01);
+        let sample_step = dist_step / 0.01;
+        xs_array = samples
+            .iter()
+            .step_by(sample_step as usize)
+            .map(|q| {
+                Vector6::new(
+                    q.x(),
+                    q.y(),
+                    utils::wrap_angle_to_pmpi(q.rot()),
+                    U_d * q.rot().cos(),
+                    U_d * q.rot().sin(),
+                    0.0,
+                )
+            })
+            .collect::<Vec<Vector6<f32>>>();
+        t_array = (0..xs_array.len())
+            .map(|i| i as f32 * time_step)
+            .collect::<Vec<f32>>();
+
+        if *t_array.last().unwrap() > max_steering_time {
+            let relevant_indices = t_array
+                .iter()
+                .enumerate()
+                .take_while(|(_, t)| **t <= max_steering_time)
+                .map(|(i, _)| i)
+                .collect::<Vec<usize>>();
+            xs_array = relevant_indices
+                .iter()
+                .map(|i| xs_array[*i].clone())
+                .collect::<Vec<Vector6<f32>>>();
+            reached_last = false;
+        }
+        // println!(
+        //     "xs_goal - xs_array_last: {:?}  | dist: {:.4}",
+        //     xs_goal - xs_array.last().unwrap(),
+        //     (Vector2::new(xs_goal[0], xs_goal[1])
+        //         - Vector2::new(xs_array.last().unwrap()[0], xs_array.last().unwrap()[1]))
+        //     .norm()
+        // );
+        (xs_array, u_array, refs_array, t_array, reached_last)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::f64::consts;
+    use std::f32::consts;
 
+    #[test]
+    pub fn test_dubins() -> Result<(), Box<dyn std::error::Error>> {
+        // PosRot represents the car's (Pos)ition and (Rot)ation
+        // Where x and y are the coordinates on a 2d plane
+        // and theta is the orientation of the car's front in radians
+
+        // The starting position and rotation
+        // Calling 'into' is a requirement for using the glam feature, but PosRot::from_f32 can also be used for const contexts
+        // If you're not using the glam feature, calling 'into' is unneeded.
+        let q0 = PosRot::from_f32(0., 0., std::f32::consts::PI / 4.);
+
+        // The target end position and rotation
+        let q1 = [100., -100., std::f32::consts::PI * (4. / 4.)].into();
+
+        // The car's turning radius (must be > 0)
+        // This can be calculated by taking a cars angular velocity and dividing it by the car's forward velocity
+        // `turn radius = ang_vel / forward_vel`
+        let rho: f32 = 11.6;
+
+        // Calculate the shortest possible path between these two points with the given turning radius
+        let path = match DubinsPath::shortest_from(q0, q1, rho) {
+            Ok(path) => path,
+            Err(e) => panic!("Error: {:?}", e),
+        };
+        let samples = path.sample_many_range(0.5, 0f32..path.length() + 5.0);
+        println!("path: {:?}", path);
+        println!("path length: {:.2}", path.length());
+        println!("samples: {:?}", samples);
+        let xs_array = samples
+            .iter()
+            .map(|q| Vector6::new(q.x() as f32, q.y() as f32, q.rot() as f32, 0.0, 0.0, 0.0))
+            .collect::<Vec<Vector6<f32>>>();
+        let refs_array = vec![(0.0, 5.0); xs_array.len()];
+
+        utils::draw_steering_results(
+            xs_array.first().unwrap(),
+            xs_array.last().unwrap(),
+            &refs_array,
+            &xs_array,
+            0.1,
+        )?;
+        Ok(())
+    }
     #[test]
     pub fn test_steer() -> Result<(), Box<dyn std::error::Error>> {
         let mut steering =
-            SimpleSteering::<Telemetron>::new(LOSGuidanceParams::new(), TelemetronParams::new());
+            LOSSteering::<Telemetron>::new(LOSGuidanceParams::new(), TelemetronParams::new());
         let xs_start = Vector6::new(0.0, 0.0, consts::PI / 2.0, 5.0, 0.0, 0.0);
         let acceptance_radius = 10.0;
         let xs_goal = Vector6::new(100.0, 0.0, 0.0, 0.0, 0.0, 0.0);

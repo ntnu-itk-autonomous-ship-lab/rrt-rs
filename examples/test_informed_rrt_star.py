@@ -5,9 +5,10 @@
 
     Author: Trym Tengesdal
 """
+import pathlib
 import time
 from dataclasses import asdict, dataclass
-from typing import Optional
+from typing import Optional, Tuple
 
 import colav_simulator.common.map_functions as mapf
 import colav_simulator.common.paths as dp
@@ -25,6 +26,34 @@ from colav_simulator.simulator import Simulator
 from shapely import strtree
 
 
+def parse_rrt_solution(soln: dict) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, float]:
+    """Parses the RRT solution.
+
+    Args:
+        soln (dict): Solution dictionary.
+
+    Returns:
+        Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, float]: Tuple of waypoints, trajectory, inputs and times and cost from the solution.
+    """
+    times = np.array(soln["times"])
+    n_samples = len(times)
+    trajectory = np.zeros((6, n_samples))
+    n_inputs = len(soln["inputs"])
+    inputs = np.zeros((3, n_inputs))
+    n_wps = len(soln["waypoints"])
+    waypoints = np.zeros((3, n_wps))
+    if n_samples > 0:
+        for k in range(n_wps):
+            waypoints[:, k] = np.array(soln["waypoints"][k])
+        for k in range(n_samples):
+            trajectory[:, k] = np.array(soln["states"][k])
+        for k in range(n_inputs):
+            inputs[:, k] = np.array(soln["inputs"][k])
+    if n_wps == 1:
+        waypoints = np.array([waypoints[:, 0], waypoints[:, 0]]).T
+    return waypoints, trajectory, inputs, times, soln["cost"]
+
+
 @dataclass
 class InformedRRTStarParams:
     max_nodes: int = 3000
@@ -37,7 +66,6 @@ class InformedRRTStarParams:
     min_steering_time: float = 5.0
     max_steering_time: float = 20.0
     steering_acceptance_radius: float = 15.0
-    max_nn_node_dist: float = 100.0
     gamma: float = 1200.0
 
     @classmethod
@@ -55,13 +83,13 @@ class RRTConfig:
     model: models.KinematicCSOGParams = models.KinematicCSOGParams(
         name="KinematicCSOG",
         draft=0.5,
-        length=10.0,
-        width=3.0,
-        T_chi=10.0,
-        T_U=7.0,
-        r_max=np.deg2rad(4),
+        length=15.0,
+        width=4.0,
+        T_chi=6.0,
+        T_U=6.0,
+        r_max=np.deg2rad(10),
         U_min=0.0,
-        U_max=15.0,
+        U_max=10.0,
     )
     los: guidances.LOSGuidanceParams = guidances.LOSGuidanceParams(
         K_p=0.035, K_i=0.0, pass_angle_threshold=90.0, R_a=25.0, max_cross_track_error_int=30.0
@@ -126,7 +154,7 @@ class InformedRRTStar(ci.ICOLAV):
         assert goal_state is not None, "Goal state must be provided to the RRT"
         assert enc is not None, "ENC must be provided to the RRT"
         if not self._initialized:
-            self._min_depth = 0  # mapf.find_minimum_depth(kwargs["os_draft"], enc)
+            self._min_depth = mapf.find_minimum_depth(kwargs["os_draft"], enc)
             self._t_prev = t
             self._map_origin = ownship_state[:2]
             self._initialized = True
@@ -181,19 +209,11 @@ class InformedRRTStar(ci.ICOLAV):
                 if n_samples > 0:
                     # rrt_solution = hf.load_rrt_solution()
                     success_indices.append(aa)
-                    costs.append(rrt_solution["cost"])
 
-                    self._rrt_trajectory = np.zeros((6, n_samples))
-                    self._rrt_inputs = np.zeros((3, n_samples - 1))
-                    n_wps = len(rrt_solution["waypoints"])
-                    self._rrt_waypoints = np.zeros((3, n_wps))
-                    for k in range(n_wps):
-                        self._rrt_waypoints[:, k] = np.array(rrt_solution["waypoints"][k])
-                    for k in range(n_samples):
-                        self._rrt_trajectory[:, k] = np.array(rrt_solution["states"][k])
-                        if k < n_samples - 1:
-                            self._rrt_inputs[:, k] = np.array(rrt_solution["inputs"][k])
-
+                    self._rrt_waypoints, self._rrt_trajectory, self._rrt_inputs, times, cost = parse_rrt_solution(
+                        rrt_solution
+                    )
+                    costs.append(cost)
                     solution_times.append(time_elapsed)
                     waypoint_list.append(self._rrt_waypoints)
                     trajectory_list.append(self._rrt_trajectory)
@@ -219,11 +239,13 @@ class InformedRRTStar(ci.ICOLAV):
                         ownship_state[2],
                         kwargs["os_length"],
                         kwargs["os_width"],
-                        2.0,
-                        2.0,
+                        10.0,
+                        10.0,
                     )
                     enc.draw_polygon(ship_poly, color="yellow")
-                    enc.draw_circle(center=(goal_state[1], goal_state[0]), radius=20.0, color="magenta", alpha=0.3)
+                    enc.draw_circle(center=(goal_state[1], goal_state[0]), radius=40.0, color="magenta", alpha=0.7)
+                    path = pathlib.Path(__file__).parent.parent.parent.parent
+                    enc.save_image(name="informed_rrt_star_larger_planning_case", path=path, dpi=100, extension="png")
 
             solution_times = np.array(solution_times)
             costs = np.array(costs)
@@ -241,22 +263,8 @@ class InformedRRTStar(ci.ICOLAV):
                 "inputs": inputs,
                 "costs": costs,
             }
-            pd.DataFrame(results).to_json("informed_rrt_star_results_smaller_planning_case.json")
-            # rrt_solution = hf.load_rrt_solution()
-            times = np.array(rrt_solution["times"])
-            n_samples = len(times)
-            if n_samples == 0:
-                raise RuntimeError("RRT did not find a solution")
-            self._rrt_trajectory = np.zeros((6, n_samples))
-            self._rrt_inputs = np.zeros((3, n_samples - 1))
-            n_wps = len(rrt_solution["waypoints"])
-            self._rrt_waypoints = np.zeros((3, n_wps))
-            for k in range(n_wps):
-                self._rrt_waypoints[:, k] = np.array(rrt_solution["waypoints"][k])
-            for k in range(n_samples):
-                self._rrt_trajectory[:, k] = np.array(rrt_solution["states"][k])
-                if k < n_samples - 1:
-                    self._rrt_inputs[:, k] = np.array(rrt_solution["inputs"][k])
+            pd.DataFrame(results).to_json("informed_rrt_star_results_larger_planning_case.json")
+            self._rrt_waypoints, self._rrt_trajectory, self._rrt_inputs, times, cost = parse_rrt_solution(rrt_solution)
 
             # Plots for debugging. Set breakpoint here to inspect
             if enc is not None:
@@ -324,22 +332,21 @@ class InformedRRTStar(ci.ICOLAV):
 if __name__ == "__main__":
     params = RRTPlannerParams()
 
-    choice = 1
+    choice = 0
     if choice == 0:
         scenario_file = dp.scenarios / "rl_scenario.yaml"
         params.rrt.params = InformedRRTStarParams(
             max_nodes=10000,
             max_iter=25000,
-            max_time=5000.0,
+            max_time=300.0,
             iter_between_direct_goal_growth=500,
-            min_node_dist=5.0,
+            min_node_dist=15.0,
             goal_radius=700.0,
             step_size=1.0,
-            min_steering_time=2.0,
-            max_steering_time=20.0,
+            min_steering_time=1.0,
+            max_steering_time=30.0,
             steering_acceptance_radius=10.0,
-            max_nn_node_dist=100.0,
-            gamma=1500.0,
+            gamma=3500.0,
         )
 
     elif choice == 1:
@@ -356,7 +363,6 @@ if __name__ == "__main__":
             min_steering_time=2.0,
             max_steering_time=20.0,
             steering_acceptance_radius=10.0,
-            max_nn_node_dist=100.0,
             gamma=1500.0,
         )
 

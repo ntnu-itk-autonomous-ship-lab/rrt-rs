@@ -3,7 +3,6 @@
 //!
 use crate::common::RRTNode;
 use crate::enc_data::ENCData;
-use approx::assert_relative_eq;
 use geo::{coord, LineString, MultiPolygon, Point, Polygon, Rect, Rotate};
 use id_tree::*;
 use nalgebra::{
@@ -14,46 +13,48 @@ use plotters::coord::types::RangedCoordf32;
 use plotters::coord::Shift;
 use plotters::prelude::*;
 use pyo3::prelude::*;
+use rand::distributions::Distribution;
 use rand::Rng;
 use rand_chacha::ChaChaRng;
-use std::f64::consts;
+use std::f32::consts;
 use std::iter;
+use std::sync::{Arc, Mutex};
 
 pub fn bbox_from_corner_points(
-    p1: &Vector2<f64>,
-    p2: &Vector2<f64>,
-    buffer_x: f64,
-    buffer_y: f64,
-) -> Rect {
+    p1: &Vector2<f32>,
+    p2: &Vector2<f32>,
+    buffer_x: f32,
+    buffer_y: f32,
+) -> Rect<f32> {
     let p_min = Vector2::new(p1[0].min(p2[0]) - buffer_x, p1[1].min(p2[1]) - buffer_y);
     let p_max = Vector2::new(p1[0].max(p2[0]) + buffer_x, p1[1].max(p2[1]) + buffer_y);
     Rect::new(
-        coord! { x: p_min[0], y: p_min[1] },
+        coord! { x: p_min[0], y: p_min[1]},
         coord! { x: p_max[0], y: p_max[1]},
     )
 }
 
 #[allow(non_snake_case)]
 pub fn informed_sample(
-    p_start: &Vector2<f64>,
-    p_goal: &Vector2<f64>,
-    c_max: f64,
+    p_start: &Vector2<f32>,
+    p_goal: &Vector2<f32>,
+    c_max: f32,
     rng: &mut ChaChaRng,
-) -> Vector2<f64> {
-    assert!(c_max < f64::INFINITY && c_max > 0.0);
+) -> Vector2<f32> {
+    assert!(c_max < f32::INFINITY && c_max > 0.0);
     let c_min = (p_start - p_goal).norm();
     let p_centre = (p_start + p_goal) / 2.0;
     let r_1 = c_max / 2.0;
     let r_2 = (c_max.powi(2) - c_min.powi(2)).abs().sqrt() / 2.0;
     let L = Matrix2::from_partial_diagonal(&[r_1, r_2]);
-    let alpha = f64::atan2(p_goal[1] - p_start[1], p_goal[0] - p_start[0]);
+    let alpha = f32::atan2(p_goal[1] - p_start[1], p_goal[0] - p_start[0]);
     let C = Matrix2::new(alpha.cos(), -alpha.sin(), alpha.sin(), alpha.cos());
-    let x_ball: Vector2<f64> = sample_from_unit_ball(rng);
-    let p_rand: Vector2<f64> = transform_standard_sample(x_ball, C * L, p_centre);
+    let x_ball: Vector2<f32> = sample_from_unit_ball(rng);
+    let p_rand: Vector2<f32> = transform_standard_sample(x_ball, C.transpose() * L, p_centre);
     p_rand
 }
 
-pub fn sample_from_unit_ball(rng: &mut ChaChaRng) -> Vector2<f64> {
+pub fn sample_from_unit_ball(rng: &mut ChaChaRng) -> Vector2<f32> {
     let mut p = Vector2::zeros();
     loop {
         p[0] = rng.gen_range(-1.0..1.0);
@@ -64,7 +65,7 @@ pub fn sample_from_unit_ball(rng: &mut ChaChaRng) -> Vector2<f64> {
     }
 }
 
-pub fn sample_from_bbox(bbox: &Rect, rng: &mut ChaChaRng) -> Vector2<f64> {
+pub fn sample_from_bbox(bbox: &Rect<f32>, rng: &mut ChaChaRng) -> Vector2<f32> {
     let x = rng.gen_range(bbox.min().x..bbox.max().x);
     let y = rng.gen_range(bbox.min().y..bbox.max().y);
     Vector2::new(x, y)
@@ -82,32 +83,24 @@ where
 }
 
 pub fn sample_from_triangulation(
-    triangulation: &Vec<Polygon>,
+    triangulation: &Vec<Polygon<f32>>,
+    weighted_index_distribution: &rand::distributions::WeightedIndex<f32>,
     rng: &mut ChaChaRng,
-) -> Vector2<f64> {
-    let triangle_idx = rng.gen_range(0..triangulation.len());
+) -> Vector2<f32> {
+    let triangle_idx = weighted_index_distribution.sample(rng);
     let triangle = triangulation[triangle_idx].clone();
     assert!(triangulation[triangle_idx].exterior().0.len() >= 4); // 3 points + 1 for the closing point
-    let a = Vector2::new(
-        triangle.exterior().0[0].x as f64,
-        triangle.exterior().0[0].y as f64,
-    );
-    let b = Vector2::new(
-        triangle.exterior().0[1].x as f64,
-        triangle.exterior().0[1].y as f64,
-    );
-    let c = Vector2::new(
-        triangle.exterior().0[2].x as f64,
-        triangle.exterior().0[2].y as f64,
-    );
-    let r_1: f64 = rng.gen_range(0.0..1.0);
-    let r_2: f64 = rng.gen_range(0.0..1.0);
+    let a = Vector2::new(triangle.exterior().0[0].x, triangle.exterior().0[0].y);
+    let b = Vector2::new(triangle.exterior().0[1].x, triangle.exterior().0[1].y);
+    let c = Vector2::new(triangle.exterior().0[2].x, triangle.exterior().0[2].y);
+    let r_1: f32 = rng.gen_range(0.0..1.0);
+    let r_2: f32 = rng.gen_range(0.0..1.0);
     let p_rand = (1.0 - r_1.sqrt()) * a + r_1.sqrt() * (1.0 - r_2) * b + r_1.sqrt() * r_2 * c;
     p_rand
 }
 
 #[allow(non_snake_case)]
-pub fn Cmtrx(Mmtrx: Matrix3<f64>, nu: Vector3<f64>) -> Matrix3<f64> {
+pub fn Cmtrx(Mmtrx: Matrix3<f32>, nu: Vector3<f32>) -> Matrix3<f32> {
     let mut Cmtrx = Matrix3::zeros();
 
     let c13 = -(Mmtrx[(1, 1)] * nu[1] + Mmtrx[(1, 2)] * nu[2]);
@@ -121,11 +114,11 @@ pub fn Cmtrx(Mmtrx: Matrix3<f64>, nu: Vector3<f64>) -> Matrix3<f64> {
 
 #[allow(non_snake_case)]
 pub fn Dmtrx(
-    D_l: Matrix3<f64>,
-    D_q: Matrix3<f64>,
-    D_c: Matrix3<f64>,
-    nu: Vector3<f64>,
-) -> Matrix3<f64> {
+    D_l: Matrix3<f32>,
+    D_q: Matrix3<f32>,
+    D_c: Matrix3<f32>,
+    nu: Vector3<f32>,
+) -> Matrix3<f32> {
     let D_q_res = D_q * Matrix3::from_partial_diagonal(&[nu[0].abs(), nu[1].abs(), nu[2].abs()]);
     let nu_squared = nu.component_mul(&nu);
     let D_c_res =
@@ -140,7 +133,7 @@ pub fn Dmtrx(
 }
 
 #[allow(non_snake_case)]
-pub fn Rmtrx(psi: f64) -> Matrix3<f64> {
+pub fn Rmtrx(psi: f32) -> Matrix3<f32> {
     let mut Rmtrx = Matrix3::zeros();
     Rmtrx[(0, 0)] = psi.cos();
     Rmtrx[(0, 1)] = -psi.sin();
@@ -150,23 +143,31 @@ pub fn Rmtrx(psi: f64) -> Matrix3<f64> {
     Rmtrx
 }
 
-pub fn wrap_min_max(x: f64, x_min: f64, x_max: f64) -> f64 {
+/// Wraps a value to the interval [x_min, x_max]
+///
+/// Arguments:
+///     - x (f32): The value to be wrapped
+///     - x_min (f32): The lower bound of the interval
+///     - x_max (f32): The upper bound of the interval
+/// # Returns:
+///     - (f32): The wrapped value
+pub fn wrap_min_max(x: f32, x_min: f32, x_max: f32) -> f32 {
     x_min + modulo(x - x_min, x_max - x_min)
 }
 
-pub fn wrap_angle_to_pmpi(x: f64) -> f64 {
+pub fn wrap_angle_to_pmpi(x: f32) -> f32 {
     wrap_min_max(x, -consts::PI, consts::PI)
 }
 
-pub fn wrap_angle_to_02pi(x: f64) -> f64 {
+pub fn wrap_angle_to_02pi(x: f32) -> f32 {
     wrap_min_max(x, 0.0, 2.0 * consts::PI)
 }
 
-pub fn modulo(x: f64, y: f64) -> f64 {
+pub fn modulo(x: f32, y: f32) -> f32 {
     ((x % y) + y) % y
 }
 
-pub fn wrap_angle_diff_to_pmpi(x: f64, y: f64) -> f64 {
+pub fn wrap_angle_diff_to_pmpi(x: f32, y: f32) -> f32 {
     //println!("x: {}, y: {}", x, y);
     let diff1 = modulo(x - y, 2.0 * consts::PI);
     let diff2 = modulo(y - x, 2.0 * consts::PI);
@@ -178,23 +179,23 @@ pub fn wrap_angle_diff_to_pmpi(x: f64, y: f64) -> f64 {
     }
 }
 
-pub fn unwrap_angle(x_prev: f64, x: f64) -> f64 {
+pub fn unwrap_angle(x_prev: f32, x: f32) -> f32 {
     x_prev + wrap_angle_diff_to_pmpi(x, x_prev)
 }
 
-pub fn rad2deg(x: f64) -> f64 {
+pub fn rad2deg(x: f32) -> f32 {
     x * 180.0 / consts::PI
 }
 
-pub fn deg2rad(x: f64) -> f64 {
+pub fn deg2rad(x: f32) -> f32 {
     x * consts::PI / 180.0
 }
 
-pub fn saturate(x: f64, x_min: f64, x_max: f64) -> f64 {
+pub fn saturate(x: f32, x_min: f32, x_max: f32) -> f32 {
     x.min(x_max).max(x_min)
 }
 
-pub fn compute_path_length_slice(xs_array: &Vec<[f64; 6]>) -> f64 {
+pub fn compute_path_length_slice(xs_array: &Vec<[f32; 6]>) -> f32 {
     xs_array
         .iter()
         .zip(xs_array.iter().skip(1))
@@ -205,7 +206,7 @@ pub fn compute_path_length_slice(xs_array: &Vec<[f64; 6]>) -> f64 {
         .sum()
 }
 
-pub fn compute_path_length_nalgebra(xs_array: &Vec<Vector6<f64>>) -> f64 {
+pub fn compute_path_length_nalgebra(xs_array: &Vec<Vector6<f32>>) -> f32 {
     xs_array
         .iter()
         .zip(xs_array.iter().skip(1))
@@ -225,8 +226,8 @@ where
 
 pub fn draw_current_situation(
     filename: &str,
-    xs_array: &Vec<Vector6<f64>>,
-    waypoints: &Option<Vec<Vector6<f64>>>,
+    xs_array: &Vec<Vector6<f32>>,
+    waypoints: &Option<Vec<Vector6<f32>>>,
     tree: &Tree<RRTNode>,
     enc_data: &ENCData,
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -301,7 +302,7 @@ pub fn draw_current_situation(
 pub fn draw_multipolygon(
     drawing_area: &DrawingArea<BitMapBackend, Shift>,
     chart: &mut ChartContext<BitMapBackend, Cartesian2d<RangedCoordf32, RangedCoordf32>>,
-    multipolygon: &MultiPolygon<f64>,
+    multipolygon: &MultiPolygon<f32>,
     color: &RGBColor,
 ) -> Result<(), Box<dyn std::error::Error>> {
     for polygon in multipolygon.0.iter() {
@@ -321,7 +322,7 @@ pub fn draw_multipolygon(
 pub fn draw_triangulation(
     drawing_area: &DrawingArea<BitMapBackend, Shift>,
     chart: &mut ChartContext<BitMapBackend, Cartesian2d<RangedCoordf32, RangedCoordf32>>,
-    triangulation: &Vec<Polygon<f64>>,
+    triangulation: &Vec<Polygon<f32>>,
     color: &RGBColor,
 ) -> Result<(), Box<dyn std::error::Error>> {
     for triangle in triangulation.iter() {
@@ -341,7 +342,7 @@ pub fn draw_triangulation(
 pub fn draw_trajectory(
     drawing_area: &DrawingArea<BitMapBackend, Shift>,
     chart: &mut ChartContext<BitMapBackend, Cartesian2d<RangedCoordf32, RangedCoordf32>>,
-    xs_array: &Vec<Vector6<f64>>,
+    xs_array: &Vec<Vector6<f32>>,
     color: &RGBColor,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let points: Vec<(f32, f32)> = xs_array
@@ -354,7 +355,7 @@ pub fn draw_trajectory(
     Ok(())
 }
 
-pub fn create_ship_polygon(state: &Vector6<f64>, length: f64, width: f64) -> Polygon<f64> {
+pub fn create_ship_polygon(state: &Vector6<f32>, length: f32, width: f32) -> Polygon<f32> {
     let os_poly_non_rot = Polygon::new(
         LineString::new(vec![
             coord! {x: state[0] + length / 2.0, y: state[1]},
@@ -367,7 +368,7 @@ pub fn create_ship_polygon(state: &Vector6<f64>, length: f64, width: f64) -> Pol
         vec![],
     );
     let os_poly = os_poly_non_rot.rotate_around_point(
-        state[2] * 180.0 / std::f64::consts::PI,
+        state[2] * 180.0 / std::f32::consts::PI,
         Point::new(state[0], state[1]),
     );
     os_poly
@@ -376,10 +377,10 @@ pub fn create_ship_polygon(state: &Vector6<f64>, length: f64, width: f64) -> Pol
 pub fn draw_ownship(
     drawing_area: &DrawingArea<BitMapBackend, Shift>,
     chart: &mut ChartContext<BitMapBackend, Cartesian2d<RangedCoordf32, RangedCoordf32>>,
-    state: &Vector6<f64>,
+    state: &Vector6<f32>,
     color: &RGBColor,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let os_poly = create_ship_polygon(state, 10.0, 2.0);
+    let os_poly = create_ship_polygon(state, 20.0, 4.0);
     let poly_points: Vec<(f32, f32)> = os_poly
         .exterior()
         .0
@@ -391,25 +392,12 @@ pub fn draw_ownship(
     Ok(())
 }
 
-pub fn draw_enc_data_vs_trajectory(
-    drawing_area: &DrawingArea<BitMapBackend, Shift>,
-    chart: &mut ChartContext<BitMapBackend, Cartesian2d<RangedCoordf32, RangedCoordf32>>,
-    enc_data: &ENCData,
-    xs_array: &Vec<Vector6<f64>>,
-) -> Result<(), Box<dyn std::error::Error>> {
-    draw_multipolygon(drawing_area, chart, &enc_data.hazards, &RED)?;
-    draw_trajectory(drawing_area, chart, xs_array, &MAGENTA)?;
-    draw_ownship(drawing_area, chart, &xs_array.first().unwrap(), &GREEN)?;
-    draw_ownship(drawing_area, chart, &xs_array.last().unwrap(), &GREEN)?;
-    Ok(())
-}
-
 pub fn draw_steering_results(
-    xs_start: &Vector6<f64>,
-    xs_goal: &Vector6<f64>,
-    refs_array: &Vec<(f64, f64)>,
-    xs_array: &Vec<Vector6<f64>>,
-    _acceptance_radius: f64,
+    xs_start: &Vector6<f32>,
+    xs_goal: &Vector6<f32>,
+    refs_array: &Vec<(f32, f32)>,
+    xs_array: &Vec<Vector6<f32>>,
+    _acceptance_radius: f32,
 ) -> Result<(), Box<dyn std::error::Error>> {
     draw_north_east_chart(
         "steer.png",
@@ -418,27 +406,27 @@ pub fn draw_steering_results(
     )?;
 
     // Draw psi vs psi_d
-    let mut psi_array: Vec<f64> = xs_array.iter().map(|xs| rad2deg(xs[2])).collect();
+    let mut psi_array: Vec<f32> = xs_array.iter().map(|xs| rad2deg(xs[2])).collect();
     psi_array.remove(0);
-    let psi_d_array: Vec<f64> = refs_array.iter().map(|refs| rad2deg(refs.1)).collect();
+    let psi_d_array: Vec<f32> = refs_array.iter().map(|refs| rad2deg(refs.1)).collect();
 
-    let psi_error_array: Vec<f64> = psi_array
+    let psi_error_array: Vec<f32> = psi_array
         .iter()
         .zip(psi_d_array.iter())
         .map(|(psi, psi_d)| wrap_angle_diff_to_pmpi(*psi_d, *psi))
         .collect();
-    let _ref_error_array: Vec<f64> = psi_error_array.iter().map(|_| 0.0).collect();
+    let _ref_error_array: Vec<f32> = psi_error_array.iter().map(|_| 0.0).collect();
 
     draw_variable_vs_reference("psi_comp.png", "psi error", &psi_array, &psi_d_array)?;
 
     // Draw u vs u_d
-    let mut u_array: Vec<f64> = xs_array
+    let mut u_array: Vec<f32> = xs_array
         .iter()
         .map(|xs| (xs[3] * xs[3] + xs[4] * xs[4]).sqrt())
         .collect();
     u_array.remove(0);
-    let u_d_array: Vec<f64> = refs_array.iter().map(|refs| refs.0).collect();
-    let _u_error_array: Vec<f64> = u_array
+    let u_d_array: Vec<f32> = refs_array.iter().map(|refs| refs.0).collect();
+    let _u_error_array: Vec<f32> = u_array
         .iter()
         .zip(u_d_array.iter())
         .map(|(u, u_d)| u_d - u)
@@ -450,9 +438,9 @@ pub fn draw_steering_results(
 pub fn draw_tree(
     filename: &str,
     tree: &Tree<RRTNode>,
-    p_start: &Vector2<f64>,
-    p_goal: &Vector2<f64>,
-    xs_soln_array: Option<&Vec<[f64; 6]>>,
+    p_start: &Vector2<f32>,
+    p_goal: &Vector2<f32>,
+    xs_soln_array: Option<&Vec<[f32; 6]>>,
     enc_data: &ENCData,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let drawing_area = BitMapBackend::new(filename, (640, 480)).into_drawing_area();
@@ -502,7 +490,7 @@ pub fn draw_tree_lines(
     tree: &Tree<RRTNode>,
     node_id: &NodeId,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let node = tree.get(node_id).unwrap();
+    let node_data = tree.get(node_id).unwrap().data().clone();
     let mut children_ids = tree.children_ids(node_id).unwrap();
     loop {
         let child_id = match children_ids.next() {
@@ -510,13 +498,12 @@ pub fn draw_tree_lines(
             None => break,
         };
 
-        let child_node = tree.get(child_id).unwrap();
-
+        let child_node_data = tree.get(child_id).unwrap().data().clone();
         let points = vec![
-            (node.data().state[1] as f32, node.data().state[0] as f32),
+            (node_data.state[1] as f32, node_data.state[0] as f32),
             (
-                child_node.data().state[1] as f32,
-                child_node.data().state[0] as f32,
+                child_node_data.state[1] as f32,
+                child_node_data.state[0] as f32,
             ),
         ];
 
@@ -538,8 +525,8 @@ pub fn draw_tree_lines(
 
 pub fn draw_north_east_chart(
     filename: &str,
-    xs_array: &Vec<Vector6<f64>>,
-    waypoints: &Vec<Vector6<f64>>,
+    xs_array: &Vec<Vector6<f32>>,
+    waypoints: &Vec<Vector6<f32>>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let buffer = 100.0;
     let min_wp_y = waypoints
@@ -617,8 +604,8 @@ pub fn draw_north_east_chart(
 pub fn draw_variable_vs_reference(
     filename: &str,
     chart_name: &str,
-    variable: &Vec<f64>,
-    reference: &Vec<f64>,
+    variable: &Vec<f32>,
+    reference: &Vec<f32>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let root = BitMapBackend::new(filename, (640, 480)).into_drawing_area();
     root.fill(&WHITE)?;
@@ -664,6 +651,7 @@ pub fn draw_variable_vs_reference(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use approx::assert_relative_eq;
 
     #[test]
     fn test_wrap_min_max() {
@@ -710,7 +698,7 @@ mod tests {
         let D_c = Matrix3::from_partial_diagonal(&[0.0, 0.0, 3224.0]);
         let D_q = Matrix3::from_partial_diagonal(&[135.0, 2000.0, 0.0]);
         let D_l = Matrix3::from_partial_diagonal(&[50.0, 200.0, 1281.0]);
-        let nu: Vector3<f64> = Vector3::new(1.0, 1.0, 1.0);
+        let nu: Vector3<f32> = Vector3::new(1.0, 1.0, 1.0);
 
         let Dmtrx_res = Dmtrx(D_l, D_q, D_c, nu);
         println!("Dmtrx_res: {:?}", Dmtrx_res);
@@ -731,7 +719,7 @@ mod tests {
     #[allow(non_snake_case)]
     #[test]
     fn test_coriolis_matrix() {
-        let nu: Vector3<f64> = Vector3::new(1.0, 1.0, 1.0);
+        let nu: Vector3<f32> = Vector3::new(1.0, 1.0, 1.0);
         let Mmtrx = Matrix3::from_partial_diagonal(&[3000.0, 3000.0, 19000.0]);
         let Cmtrx_res = Cmtrx(Mmtrx, nu);
         println!("Cmtrx_res: {:?}", Cmtrx_res);
