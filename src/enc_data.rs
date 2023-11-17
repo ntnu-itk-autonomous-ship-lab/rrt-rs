@@ -6,7 +6,7 @@
 //! ## Usage
 //! Relies on transferring ENC data from python to rust using pyo3
 use geo::{
-    coord, point, Contains, EuclideanDistance, Intersects, LineString, MultiPolygon, Polygon, Rect,
+    coord, Contains, EuclideanDistance, Intersects, LineString, MultiPolygon, Point, Polygon, Rect,
 };
 use nalgebra::{Vector2, Vector6};
 use pyo3::prelude::*;
@@ -15,10 +15,10 @@ use std::fs::File;
 #[pyclass]
 #[derive(Clone, Debug)]
 pub struct ENCData {
-    pub hazards: MultiPolygon<f32>,
-    pub safe_sea_triangulation: Vec<Polygon<f32>>,
-    pub safe_sea_triangulation_weights: Vec<f32>,
-    pub bbox: Rect<f32>,
+    pub hazards: MultiPolygon<f64>,
+    pub safe_sea_triangulation: Vec<Polygon<f64>>,
+    pub safe_sea_triangulation_weights: Vec<f64>,
+    pub bbox: Rect<f64>,
 }
 
 #[pymethods]
@@ -43,7 +43,7 @@ impl ENCData {
     }
 
     pub fn transfer_bbox(&mut self, bbox: &PyTuple) -> PyResult<()> {
-        let bbox = bbox.extract::<(f32, f32, f32, f32)>()?;
+        let bbox = bbox.extract::<(f64, f64, f64, f64)>()?;
         self.bbox = Rect::new(coord! {x: bbox.1, y: bbox.0}, coord! {x: bbox.3, y: bbox.2});
         Ok(())
     }
@@ -143,32 +143,32 @@ impl ENCData {
 
 impl ENCData {
     /// Check if a point is inside the ENC Hazards
-    pub fn inside_hazards(&self, p: &Vector2<f32>) -> bool {
+    pub fn inside_hazards(&self, p: &Vector2<f64>) -> bool {
         if self.is_empty() {
             return false;
         }
-        let point = point![x: p[0], y: p[1]];
+        let point = Point::new(p[0], p[1]);
         self.hazards.contains(&point)
     }
 
-    pub fn inside_bbox(&self, p: &Vector2<f32>) -> bool {
+    pub fn inside_bbox(&self, p: &Vector2<f64>) -> bool {
         if self.is_empty() {
             return true;
         }
-        let point = point![x: p[0], y: p[1]];
+        let point = Point::new(p[0], p[1]);
         self.bbox.contains(&point)
     }
 
-    pub fn intersects_with_linestring(&self, linestring: &LineString<f32>) -> bool {
+    pub fn intersects_with_linestring(&self, linestring: &LineString<f64>) -> bool {
         linestring.intersects(&self.hazards)
     }
 
-    pub fn intersects_with_segment(&self, p1: &Vector2<f32>, p2: &Vector2<f32>) -> bool {
+    pub fn intersects_with_segment(&self, p1: &Vector2<f64>, p2: &Vector2<f64>) -> bool {
         let line = LineString(vec![coord![x: p1[0], y: p1[1]], coord![x: p2[0], y: p2[1]]]);
         self.intersects_with_linestring(&line)
     }
 
-    pub fn intersects_with_trajectory(&self, xs_array: &Vec<Vector6<f32>>) -> bool {
+    pub fn intersects_with_trajectory(&self, xs_array: &Vec<Vector6<f64>>) -> bool {
         let traj_linestring = if xs_array.len() > 50 {
             LineString(
                 xs_array
@@ -184,7 +184,7 @@ impl ENCData {
         intersect
     }
 
-    pub fn array_inside_bbox(&self, xs_array: &Vec<Vector6<f32>>) -> bool {
+    pub fn array_inside_bbox(&self, xs_array: &Vec<Vector6<f64>>) -> bool {
         let x_min = self.bbox.min().x;
         let x_max = self.bbox.max().x;
         let y_min = self.bbox.min().y;
@@ -200,23 +200,19 @@ impl ENCData {
     }
 
     /// Calculate the distance from a point to the closest point on the ENC
-    pub fn dist2point(&self, p: &Vector2<f32>) -> f32 {
+    pub fn dist2point(&self, p: &Vector2<f64>) -> f64 {
         if self.is_empty() {
             println!("ENCData is empty");
             return -1.0;
         }
-        let point = point![x: p[0], y: p[1]];
-        println!("hazards1: {:?}", self.hazards.0[1].exterior().0[0]);
-        let dist2hazards = point.euclidean_distance(&self.hazards);
-        println!("p: {:?}| dist2hazards: {:?} ", p, dist2hazards);
-        // println!("dist2hazards: {:?}", dist2hazards);
-        dist2hazards
+        let point1 = Point::new(p[0], p[1]);
+        point1.euclidean_distance(&self.hazards)
     }
 
     /// Care only about the polygon exterior ring, as this is the only relevant part
     /// for vessel trajectory planning. The polygons are assumed to have coordinates
     /// in the form (east, north)
-    pub fn transfer_polygon(&self, py_poly: &PyAny) -> PyResult<Polygon<f32>> {
+    pub fn transfer_polygon(&self, py_poly: &PyAny) -> PyResult<Polygon<f64>> {
         let exterior = py_poly.getattr("exterior").unwrap().extract::<&PyAny>()?;
         let exterior_coords = exterior
             .getattr("coords")
@@ -225,16 +221,13 @@ impl ENCData {
 
         let mut exterior_vec = vec![];
         for coord in exterior_coords {
-            let coord_tuple = coord.extract::<(f32, f32)>().unwrap();
+            let coord_tuple = coord.extract::<(f64, f64)>().unwrap();
             exterior_vec.push(coord![x:coord_tuple.1, y:coord_tuple.0]);
         }
-        Ok(Polygon::new(
-            LineString(exterior_vec),
-            vec![LineString(vec![])],
-        ))
+        Ok(Polygon::new(LineString(exterior_vec), vec![]))
     }
 
-    pub fn transfer_multipolygon(&self, py_multipoly: &PyAny) -> PyResult<MultiPolygon<f32>> {
+    pub fn transfer_multipolygon(&self, py_multipoly: &PyAny) -> PyResult<MultiPolygon<f64>> {
         let py_geoms = py_multipoly
             .getattr("geoms")
             .unwrap()
@@ -251,11 +244,26 @@ impl ENCData {
         self.hazards = self.transfer_multipolygon(&py_multipoly)?;
         Ok(())
     }
+
+    pub fn update_safe_sea_triangulation(
+        &mut self,
+        p_start: &Vector2<f64>,
+        p_goal: &Vector2<f64>,
+        c_best: f64,
+    ) -> PyResult<()> {
+        let c_opt = (p_start - p_goal).norm();
+        let ellipsoid_envelope_bbox = Rect::new(
+            coord! {x: p_start[0] - c_opt, y: p_start[1] - c_opt},
+            coord! {x: p_goal[0] + c_opt, y: p_goal[1] + c_opt},
+        );
+        Ok(())
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use approx::assert_relative_eq;
     use pyo3::types::PyList;
 
     #[test]
@@ -359,7 +367,7 @@ mod tests {
             let polygon = poly_class.call1(args).unwrap();
 
             let multipoly_class = geometry.getattr("MultiPolygon").unwrap();
-            let py_poly_list = PyList::new(py, vec![polygon.clone()]);
+            let py_poly_list = PyList::new(py, vec![polygon]);
             let py_multipoly = multipoly_class.call1((py_poly_list,)).unwrap();
 
             enc.set_hazards(py_multipoly).unwrap();
@@ -384,7 +392,7 @@ mod tests {
             let polygon = poly_class.call1(args).unwrap();
 
             let multipoly_class = geometry.getattr("MultiPolygon").unwrap();
-            let py_poly_list = PyList::new(py, vec![polygon.clone()]);
+            let py_poly_list = PyList::new(py, vec![polygon]);
             let py_multipoly = multipoly_class.call1((py_poly_list,)).unwrap();
 
             enc.set_hazards(py_multipoly).unwrap();
@@ -400,6 +408,15 @@ mod tests {
     #[test]
     fn test_intersections() {
         Python::with_gil(|py| {
+            //             py.run(
+            //                 r#"
+            // import sys
+            // print(sys.executable, sys.path)
+            // "#,
+            //                 None,
+            //                 None,
+            //             )
+            //             .unwrap();
             let mut enc = ENCData::py_new();
 
             let geometry = PyModule::import(py, "shapely.geometry").unwrap();
@@ -410,7 +427,7 @@ mod tests {
             let polygon = poly_class.call1(args).unwrap();
 
             let multipoly_class = geometry.getattr("MultiPolygon").unwrap();
-            let py_poly_list = PyList::new(py, vec![polygon.clone()]);
+            let py_poly_list = PyList::new(py, vec![polygon]);
             let py_multipoly = multipoly_class.call1((py_poly_list,)).unwrap();
 
             enc.set_hazards(py_multipoly).unwrap();
@@ -430,35 +447,54 @@ mod tests {
     }
 
     #[test]
+    // Point to Polygon, outside point
+    fn point_polygon_distance_outside_test() {
+        // an octagon
+        let points = vec![
+            (5., 1.),
+            (4., 2.),
+            (4., 3.),
+            (5., 4.),
+            (6., 4.),
+            (7., 3.),
+            (7., 2.),
+            (6., 1.),
+            (5., 1.),
+        ];
+        let ls = LineString::from(points);
+        let poly = Polygon::new(ls, vec![]);
+        // A Random point outside the octagon
+        let p = Point::new(2.5, 0.5);
+        let dist = p.euclidean_distance(&poly);
+        assert_relative_eq!(dist, 2.1213203435596424);
+    }
+
+    #[test]
     fn test_distance_to_hazard() {
-        Python::with_gil(|py| {
-            let mut enc = ENCData::py_new();
+        let mut enc = ENCData::py_new();
 
-            let geometry = PyModule::import(py, "shapely.geometry").unwrap();
-            let poly_class = geometry.getattr("Polygon").unwrap();
-            let elements = vec![(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0), (0.0, 0.0)];
-            let pytuple_coords = PyList::new(py, elements);
-            let args = (pytuple_coords,);
-            let polygon = poly_class.call1(args).unwrap();
+        let elements: Vec<(f64, f64)> =
+            vec![(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0), (0.0, 0.0)];
 
-            let multipoly_class = geometry.getattr("MultiPolygon").unwrap();
-            let py_poly_list = PyList::new(py, vec![polygon.clone()]);
-            let py_multipoly = multipoly_class.call1((py_poly_list,)).unwrap();
+        enc.hazards = MultiPolygon(vec![Polygon::new(LineString::from(elements), vec![])]);
 
-            enc.set_hazards(py_multipoly).unwrap();
+        let point1 = Point::new(0.0, 2.0);
+        let point2 = Point::new(2.0, 0.0);
 
-            let point1 = point! {x: -2.0, y: 2.0};
-            let point2 = point! {x: 2.0, y:-2.0};
+        println!("Point1: {:?}", point1);
+        println!("Point2: {:?}", point2);
+        println!("Multipolygon: {:?}", enc.hazards.0);
+        println!("Multipolygon interior: {:?}", enc.hazards.0[0].interiors());
 
-            println!("Point1: {:?}", point1);
-            println!("Point2: {:?}", point2);
-            println!("Multipolygons: {:?}", enc.hazards.0);
-            println!("Multipolygon interior: {:?}", enc.hazards.0);
-            let d2hazard1 = point1.euclidean_distance(&enc.hazards);
-            let d2hazard2 = point2.euclidean_distance(&enc.hazards);
+        let d2hazard1 = point1.euclidean_distance(&enc.hazards.0[0]);
+        let d2hazard2 = point2.euclidean_distance(&enc.hazards);
+        let d2hazard3 = point1.euclidean_distance(&point2);
 
-            println!("d2point1: {:?} | d2point2: {:?}", d2hazard1, d2hazard2);
-        })
+        println!(
+            "d2point1: {:?} | d2point2: {:?} | point2point: {}",
+            d2hazard1, d2hazard2, d2hazard3
+        );
+        println!("done");
     }
     #[test]
     fn test_load_and_save_hazards_from_json() {

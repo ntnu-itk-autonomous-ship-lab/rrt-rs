@@ -215,9 +215,8 @@ class PQRRTStar(ci.ICOLAV):
                     rrt_solution: dict = self._rrt.grow_towards_goal(
                         ownship_state=ownship_state.tolist(),
                         U_d=U_d,
-                        do_list=[],
                         initialized=False,
-                        return_on_first_solution=True,
+                        return_on_first_solution=False,
                     )
                 except Exception as e:
                     print(e)
@@ -284,7 +283,7 @@ class PQRRTStar(ci.ICOLAV):
                 "inputs": inputs,
                 "costs_arr": costs_arr,
             }
-            pd.DataFrame(results).to_json("pqrrt_results_larger_planning_case2.json")
+            pd.DataFrame(results).to_json("pqrrt_results_larger_planning_case2_2ancestor.json")
             # pd.DataFrame(results).to_json("pqrrt_results_smaller_planning_case2.json")
             self._rrt_waypoints, self._rrt_trajectory, self._rrt_inputs, times, cost = parse_rrt_solution(rrt_solution)
 
@@ -368,10 +367,10 @@ if __name__ == "__main__":
             max_steering_time=30.0,
             steering_acceptance_radius=10.0,
             gamma=3500.0,
-            max_sample_adjustments=80,
-            lambda_sample_adjustment=50.0,
-            safe_distance=0.0,
-            max_ancestry_level=2,
+            max_sample_adjustments=10,
+            lambda_sample_adjustment=2.0,
+            safe_distance=1.0,
+            max_ancestry_level=1,
         )
 
     elif choice == 1:
@@ -379,7 +378,7 @@ if __name__ == "__main__":
 
         params.rrt.params = PQRRTStarParams(
             max_nodes=10000,
-            max_iter=25000,
+            max_iter=5000,
             max_time=50.0,
             iter_between_direct_goal_growth=500,
             min_node_dist=5.0,
@@ -389,9 +388,9 @@ if __name__ == "__main__":
             max_steering_time=20.0,
             steering_acceptance_radius=10.0,
             gamma=1500.0,
-            max_sample_adjustments=80,
+            max_sample_adjustments=40,
             lambda_sample_adjustment=4.0,
-            safe_distance=0.0,
+            safe_distance=5.0,
             max_ancestry_level=2,
         )
 

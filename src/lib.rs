@@ -19,7 +19,14 @@ pub mod pq_rrt_star;
 pub mod rrt;
 pub mod rrt_star;
 
-/// A Python module implemented in Rust. The name of this function must match
+/// The RRT* library in rust. Implements four RRT* algorithms:
+/// - PQ-RRT* (Potential field Quick RRT*)
+/// - Adaptive Informed RRT*
+/// - Informed RRT*
+/// - RRT*
+/// - RRT
+///
+/// The name of this function must match
 /// the `lib.name` setting in the `Cargo.toml`, else Python will not be able to
 /// import the module.
 #[pymodule]

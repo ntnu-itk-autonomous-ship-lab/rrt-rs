@@ -1,5 +1,5 @@
 //! # RRT*
-//! Contains the main informed RRT* functionality
+//! Contains the main adaptive informed RRT* functionality
 //!
 use crate::common::{RRTNode, RRTResult};
 use crate::enc_data::ENCData;

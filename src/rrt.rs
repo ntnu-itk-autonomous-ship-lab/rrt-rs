@@ -4,7 +4,7 @@
 use crate::common::{RRTNode, RRTResult};
 use crate::enc_data::ENCData;
 use crate::model::{KinematicCSOG, KinematicCSOGParams};
-use crate::steering::{DubinsSteering, LOSGuidanceParams, LOSSteering, Steering};
+use crate::steering::{LOSGuidanceParams, LOSSteering, Steering};
 use crate::utils;
 use config::Config;
 use id_tree::InsertBehavior::*;
@@ -17,7 +17,7 @@ use pyo3::FromPyObject;
 use rand::distributions::WeightedIndex;
 use rand::SeedableRng;
 use rand_chacha::ChaChaRng;
-use rstar::{PointDistance, RTree};
+use rstar::RTree;
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
 
@@ -25,14 +25,14 @@ use std::time::Instant;
 pub struct RRTParams {
     pub max_nodes: u64,
     pub max_iter: u64,
-    pub max_time: f32,
+    pub max_time: f64,
     pub iter_between_direct_goal_growth: u64,
-    pub min_node_dist: f32,
-    pub goal_radius: f32,
-    pub step_size: f32,
-    pub min_steering_time: f32,
-    pub max_steering_time: f32,
-    pub steering_acceptance_radius: f32,
+    pub min_node_dist: f64,
+    pub goal_radius: f64,
+    pub step_size: f64,
+    pub min_steering_time: f64,
+    pub max_steering_time: f64,
+    pub steering_acceptance_radius: f64,
 }
 
 impl RRTParams {
@@ -76,19 +76,19 @@ impl RRTParams {
 #[allow(non_snake_case)]
 #[pyclass]
 pub struct RRT {
-    pub c_best: f32,
+    pub c_best: f64,
     pub solutions: Vec<RRTNode>, // goal state for each solution
     pub params: RRTParams,
     pub steering: LOSSteering<KinematicCSOG>,
-    pub xs_start: Vector6<f32>,
-    pub xs_goal: Vector6<f32>,
-    pub U_d: f32,
+    pub xs_start: Vector6<f64>,
+    pub xs_goal: Vector6<f64>,
+    pub U_d: f64,
     pub num_nodes: u64,
     pub num_iter: u64,
     pub rtree: RTree<RRTNode>,
     bookkeeping_tree: Tree<RRTNode>,
     rng: ChaChaRng,
-    weighted_index_distribution: WeightedIndex<f32>,
+    weighted_index_distribution: WeightedIndex<f64>,
     pub enc: ENCData,
 }
 
@@ -100,7 +100,7 @@ impl RRT {
         println!("RRT model: {:?}", model);
         println!("RRT LOS: {:?}", los);
         Self {
-            c_best: std::f32::INFINITY,
+            c_best: std::f64::INFINITY,
             solutions: Vec::new(),
             params: params.clone(),
             steering: LOSSteering::new(los, model),
@@ -118,7 +118,7 @@ impl RRT {
     }
 
     pub fn reset(&mut self, seed: Option<u64>) {
-        self.c_best = std::f32::INFINITY;
+        self.c_best = std::f64::INFINITY;
         self.solutions = Vec::new();
         self.num_nodes = 0;
         self.num_iter = 0;
@@ -132,12 +132,12 @@ impl RRT {
     }
 
     #[allow(non_snake_case)]
-    pub fn set_speed_reference(&mut self, U_d: f32) -> PyResult<()> {
+    pub fn set_speed_reference(&mut self, U_d: f64) -> PyResult<()> {
         Ok(self.U_d = U_d)
     }
 
     pub fn set_init_state(&mut self, xs_start: &PyList) -> PyResult<()> {
-        let xs_start_vec = xs_start.extract::<Vec<f32>>()?;
+        let xs_start_vec = xs_start.extract::<Vec<f64>>()?;
         self.xs_start = Vector6::from_vec(xs_start_vec);
 
         let root_node = Node::new(RRTNode {
@@ -167,7 +167,7 @@ impl RRT {
     }
 
     pub fn set_goal_state(&mut self, xs_goal: &PyList) -> PyResult<()> {
-        let xs_goal_vec = xs_goal.extract::<Vec<f32>>()?;
+        let xs_goal_vec = xs_goal.extract::<Vec<f64>>()?;
         self.xs_goal = Vector6::from_vec(xs_goal_vec);
         Ok(())
     }
@@ -215,7 +215,7 @@ impl RRT {
 
     pub fn nearest_solution(&mut self, position: &PyList, py: Python<'_>) -> PyResult<PyObject> {
         assert!(self.num_nodes > 0);
-        let pos = Vector2::from_vec(position.extract::<Vec<f32>>()?);
+        let pos = Vector2::from_vec(position.extract::<Vec<f64>>()?);
         let z_pos = RRTNode::new(
             Vector6::from_vec(vec![pos[0], pos[1], 0.0, 0.0, 0.0, 0.0]),
             Vec::new(),
@@ -234,8 +234,7 @@ impl RRT {
     pub fn grow_towards_goal(
         &mut self,
         ownship_state: &PyList,
-        U_d: f32,
-        do_list: &PyList,
+        U_d: f64,
         initialized: bool,
         return_on_first_solution: bool,
         py: Python<'_>,
@@ -244,7 +243,6 @@ impl RRT {
         // println!("Ownship state: {:?}", ownship_state);
         // println!("Goal state: {:?}", self.xs_goal);
         // println!("U_d: {:?}", U_d);
-        // println!("Do list: {:?}", do_list);
 
         if !initialized {
             self.set_speed_reference(U_d)?;
@@ -278,7 +276,7 @@ impl RRT {
                 self.params.max_steering_time,
                 self.params.steering_acceptance_radius,
             )?;
-            let xs_new: Vector6<f32> = xs_array.last().copied().unwrap();
+            let xs_new: Vector6<f64> = xs_array.last().copied().unwrap();
             if self.is_collision_free(&xs_array) && t_new > self.params.min_steering_time {
                 let path_length = utils::compute_path_length_nalgebra(&xs_array);
                 z_new = RRTNode::new(
@@ -299,7 +297,7 @@ impl RRT {
                     self.num_iter, self.num_nodes, self.c_best
                 );
             }
-            if start.elapsed().as_secs() as f32 > self.params.max_time {
+            if start.elapsed().as_secs() as f64 > self.params.max_time {
                 println!("RRT timed out after {} seconds", self.params.max_time);
                 break;
             }
@@ -308,11 +306,11 @@ impl RRT {
             Ok(soln) => soln,
             Err(e) => {
                 println!("No solution found. Error msg: {:?}", e);
-                RRTResult::new((vec![], vec![], vec![], vec![], std::f32::INFINITY))
+                RRTResult::new((vec![], vec![], vec![], vec![], std::f64::INFINITY))
             }
         };
         let duration = start.elapsed();
-        println!("RRT runtime: {:?}", duration.as_millis() as f32 / 1000.0);
+        println!("RRT runtime: {:?}", duration.as_millis() as f64 / 1000.0);
         //self.draw_tree(Some(&opt_soln))?;
         Ok(opt_soln.to_object(py))
     }
@@ -339,7 +337,7 @@ impl RRT {
                 .clone()
                 .into_iter()
                 .map(|x| x.into())
-                .collect::<Vec<[f32; 6]>>(),
+                .collect::<Vec<[f64; 6]>>(),
         );
 
         node_dict.set_item("state", node_data.state.as_slice())?;
@@ -392,10 +390,10 @@ impl RRT {
     pub fn extract_solution(&self, z: &RRTNode) -> PyResult<RRTResult> {
         let mut z_current = self.bookkeeping_tree.get(&z.clone().id.unwrap()).unwrap();
         let speed = (z.state[3].powi(2) + z.state[4].powi(2)).sqrt();
-        let mut waypoints: Vec<[f32; 3]> = vec![Vector3::new(z.state[0], z.state[1], speed).into()];
-        let mut trajectories: Vec<Vec<[f32; 6]>> =
+        let mut waypoints: Vec<[f64; 3]> = vec![Vector3::new(z.state[0], z.state[1], speed).into()];
+        let mut trajectories: Vec<Vec<[f64; 6]>> =
             vec![z.trajectory.clone().into_iter().map(|x| x.into()).collect()];
-        let mut controls: Vec<Vec<[f32; 3]>> =
+        let mut controls: Vec<Vec<[f64; 3]>> =
             vec![z.controls.clone().into_iter().map(|x| x.into()).collect()];
         while z_current.parent().is_some() {
             let parent_id = z_current.parent().unwrap();
@@ -405,7 +403,7 @@ impl RRT {
             let speed =
                 (z_current.data().state[3].powi(2) + z_current.data().state[4].powi(2)).sqrt();
 
-            let waypoint: [f32; 3] =
+            let waypoint: [f64; 3] =
                 Vector3::new(z_current.data().state[0], z_current.data().state[1], speed).into();
             waypoints.push(waypoint);
             trajectories.push(
@@ -433,14 +431,14 @@ impl RRT {
             .rev()
             .flatten()
             .map(|x| *x)
-            .collect::<Vec<[f32; 6]>>();
+            .collect::<Vec<[f64; 6]>>();
         let inputs = controls
             .iter()
             .rev()
             .flatten()
             .map(|x| *x)
-            .collect::<Vec<[f32; 3]>>();
-        let times = Vec::from_iter((0..states.len()).map(|i| i as f32 * self.params.step_size));
+            .collect::<Vec<[f64; 3]>>();
+        let times = Vec::from_iter((0..states.len()).map(|i| i as f64 * self.params.step_size));
         let cost = utils::compute_path_length_slice(&states);
         Ok(RRTResult::new((waypoints, states, inputs, times, cost)))
     }
@@ -452,7 +450,7 @@ impl RRT {
             soln.states = vec![];
             return Ok(());
         }
-        // let mut states: Vec<[f32; 6]> = vec![soln.states.last().unwrap().clone()];
+        // let mut states: Vec<[f64; 6]> = vec![soln.states.last().unwrap().clone()];
         // let mut idx: usize = soln.states.len() - 1;
         // while idx > 0 {
         //     for j in 0..idx {
@@ -484,14 +482,14 @@ impl RRT {
         Ok(())
     }
 
-    pub fn distance_to_obstacle(&self, xs: &Vector6<f32>) -> f32 {
+    pub fn distance_to_obstacle(&self, xs: &Vector6<f64>) -> f64 {
         if self.enc.is_empty() {
-            return std::f32::INFINITY;
+            return std::f64::INFINITY;
         }
         self.enc.dist2point(&Vector2::new(xs[0], xs[1]))
     }
 
-    pub fn is_collision_free(&self, xs_array: &Vec<Vector6<f32>>) -> bool {
+    pub fn is_collision_free(&self, xs_array: &Vec<Vector6<f64>>) -> bool {
         if self.enc.is_empty() {
             println!("ENC is empty");
             return true;
@@ -514,7 +512,7 @@ impl RRT {
         dist_squared < (2.0 * self.params.steering_acceptance_radius).powi(2)
     }
 
-    pub fn attempt_direct_goal_growth(&mut self, max_steering_time: f32) -> PyResult<bool> {
+    pub fn attempt_direct_goal_growth(&mut self, max_steering_time: f64) -> PyResult<bool> {
         if self.num_iter % self.params.iter_between_direct_goal_growth != 0
             || !self.solutions.is_empty()
         {
@@ -528,7 +526,7 @@ impl RRT {
     pub fn attempt_goal_insertion(
         &mut self,
         z: &RRTNode,
-        max_steering_time: f32,
+        max_steering_time: f64,
     ) -> PyResult<bool> {
         if !self.goal_reachable(&z) {
             return Ok(false);
@@ -555,7 +553,7 @@ impl RRT {
             max_steering_time,
             self.params.steering_acceptance_radius,
         )?;
-        let x_new: Vector6<f32> = xs_array.last().copied().unwrap();
+        let x_new: Vector6<f64> = xs_array.last().copied().unwrap();
 
         if !(self.is_collision_free(&xs_array) && t_new > self.params.min_steering_time && reached)
         {
@@ -608,7 +606,7 @@ impl RRT {
         let p_start = Vector2::new(z_start.state[0], z_start.state[1]);
         let los = (p_end[1] - p_start[0]).atan2(p_end[0] - p_start[0]);
         (p_start - p_end).norm() < self.params.min_node_dist
-            && los.abs() * 180.0 / std::f32::consts::PI > 90.0
+            && los.abs() * 180.0 / std::f64::consts::PI > 90.0
     }
 
     pub fn nearest(&mut self, z_rand: &RRTNode) -> PyResult<RRTNode> {
@@ -624,13 +622,13 @@ impl RRT {
         &mut self,
         z_nearest: &RRTNode,
         z_rand: &RRTNode,
-        max_steering_time: f32,
-        acceptance_radius: f32,
+        max_steering_time: f64,
+        acceptance_radius: f64,
     ) -> PyResult<(
-        Vec<Vector6<f32>>,
-        Vec<Vector3<f32>>,
-        Vec<(f32, f32)>,
-        f32,
+        Vec<Vector6<f64>>,
+        Vec<Vector3<f64>>,
+        Vec<(f64, f64)>,
+        f64,
         bool,
     )> {
         let (xs_array, u_array, refs_array, t_array, reached) = self.steering.steer(
@@ -650,7 +648,7 @@ impl RRT {
         ))
     }
 
-    // pub fn steer_through_waypoints(&mut self, waypoints: &Vec<[f32; 3]>) -> PyResult<RRTResult> {
+    // pub fn steer_through_waypoints(&mut self, waypoints: &Vec<[f64; 3]>) -> PyResult<RRTResult> {
     //     let n_wps = waypoints.len();
     //     if n_wps < 2 {
     //         return Err(PyErr::new::<pyo3::exceptions::PyException, _>(
@@ -673,7 +671,7 @@ impl RRT {
     //         &xs_array
     //             .iter()
     //             .map(|x| Vector6::from(*x))
-    //             .collect::<Vec<Vector6<f32>>>(),
+    //             .collect::<Vec<Vector6<f64>>>(),
     //     );
     //     Ok(RRTResult {
     //         waypoints: waypoints.clone(),
@@ -685,8 +683,8 @@ impl RRT {
     // }
 
     pub fn sample(&mut self) -> PyResult<RRTNode> {
-        let p_start: Vector2<f32> = self.xs_start.fixed_rows::<2>(0).into();
-        let p_goal: Vector2<f32> = self.xs_goal.fixed_rows::<2>(0).into();
+        let p_start: Vector2<f64> = self.xs_start.fixed_rows::<2>(0).into();
+        let p_goal: Vector2<f64> = self.xs_goal.fixed_rows::<2>(0).into();
         let mut map_bbox = self.enc.bbox.clone();
         map_bbox = utils::bbox_from_corner_points(&p_start, &p_goal, 500.0, 500.0);
         // println!("Map bbox: {:?}", map_bbox);
@@ -751,7 +749,7 @@ impl RRT {
             .map(|z| self.extract_solution(z).unwrap())
             .collect();
         let mut opt_soln = rrt_results.iter().fold(
-            RRTResult::new((vec![], vec![], vec![], vec![], std::f32::INFINITY)),
+            RRTResult::new((vec![], vec![], vec![], vec![], std::f64::INFINITY)),
             |acc, x| {
                 if x.cost < acc.cost {
                     x.clone()
@@ -862,7 +860,7 @@ mod tests {
         let xs_start = [
             6581590.0,
             -33715.0,
-            120.0 * std::f32::consts::PI / 180.0,
+            120.0 * std::f64::consts::PI / 180.0,
             4.0,
             0.0,
             0.0,
@@ -870,7 +868,7 @@ mod tests {
         let xs_goal = [
             6581780.0,
             -32670.0,
-            -30.0 * std::f32::consts::PI / 180.0,
+            -30.0 * std::f64::consts::PI / 180.0,
             0.0,
             0.0,
             0.0,
@@ -878,7 +876,7 @@ mod tests {
         // let xs_start = [
         //     6574280.0,
         //     -31824.0,
-        //     -45.0 * std::f32::consts::PI / 180.0,
+        //     -45.0 * std::f64::consts::PI / 180.0,
         //     5.0,
         //     0.0,
         //     0.0,
@@ -894,9 +892,9 @@ mod tests {
             rrt.set_goal_state(xs_goal_py)?;
             rrt.set_speed_reference(6.0)?;
 
-            let do_list = Vec::<[f32; 6]>::new().into_py(py);
+            let do_list = Vec::<[f64; 6]>::new().into_py(py);
             let do_list = do_list.as_ref(py).downcast::<PyList>().unwrap();
-            let result = rrt.grow_towards_goal(xs_start_py, 6.0, do_list, false, false, py)?;
+            let result = rrt.grow_towards_goal(xs_start_py, 6.0, false, false, py)?;
             let pydict = result.as_ref(py).downcast::<PyDict>().unwrap();
             println!("rrtresult states: {:?}", pydict.get_item("states"));
             Ok(())

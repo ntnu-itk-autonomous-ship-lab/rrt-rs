@@ -191,9 +191,8 @@ class RRT(ci.ICOLAV):
                     rrt_solution: dict = self._rrt.grow_towards_goal(
                         ownship_state=ownship_state.tolist(),
                         U_d=U_d,
-                        do_list=[],
                         initialized=False,
-                        return_on_first_solution=True,
+                        return_on_first_solution=False,
                     )
                 except Exception as e:
                     print(e)

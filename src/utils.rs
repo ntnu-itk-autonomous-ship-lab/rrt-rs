@@ -9,23 +9,22 @@ use nalgebra::{
     ClosedAdd, ClosedMul, Matrix2, Matrix3, SMatrix, Scalar, Vector2, Vector3, Vector6,
 };
 use num::traits::{One, Zero};
-use plotters::coord::types::RangedCoordf32;
+use plotters::coord::types::RangedCoordf64;
 use plotters::coord::Shift;
 use plotters::prelude::*;
 use pyo3::prelude::*;
 use rand::distributions::Distribution;
 use rand::Rng;
 use rand_chacha::ChaChaRng;
-use std::f32::consts;
+use std::f64::consts;
 use std::iter;
-use std::sync::{Arc, Mutex};
 
 pub fn bbox_from_corner_points(
-    p1: &Vector2<f32>,
-    p2: &Vector2<f32>,
-    buffer_x: f32,
-    buffer_y: f32,
-) -> Rect<f32> {
+    p1: &Vector2<f64>,
+    p2: &Vector2<f64>,
+    buffer_x: f64,
+    buffer_y: f64,
+) -> Rect<f64> {
     let p_min = Vector2::new(p1[0].min(p2[0]) - buffer_x, p1[1].min(p2[1]) - buffer_y);
     let p_max = Vector2::new(p1[0].max(p2[0]) + buffer_x, p1[1].max(p2[1]) + buffer_y);
     Rect::new(
@@ -36,25 +35,57 @@ pub fn bbox_from_corner_points(
 
 #[allow(non_snake_case)]
 pub fn informed_sample(
-    p_start: &Vector2<f32>,
-    p_goal: &Vector2<f32>,
-    c_max: f32,
+    p_start: &Vector2<f64>,
+    p_goal: &Vector2<f64>,
+    c_max: f64,
     rng: &mut ChaChaRng,
-) -> Vector2<f32> {
-    assert!(c_max < f32::INFINITY && c_max > 0.0);
+) -> Vector2<f64> {
+    assert!(c_max < f64::INFINITY && c_max > 0.0);
     let c_min = (p_start - p_goal).norm();
     let p_centre = (p_start + p_goal) / 2.0;
     let r_1 = c_max / 2.0;
     let r_2 = (c_max.powi(2) - c_min.powi(2)).abs().sqrt() / 2.0;
     let L = Matrix2::from_partial_diagonal(&[r_1, r_2]);
-    let alpha = f32::atan2(p_goal[1] - p_start[1], p_goal[0] - p_start[0]);
+    let alpha = f64::atan2(p_goal[1] - p_start[1], p_goal[0] - p_start[0]);
     let C = Matrix2::new(alpha.cos(), -alpha.sin(), alpha.sin(), alpha.cos());
-    let x_ball: Vector2<f32> = sample_from_unit_ball(rng);
-    let p_rand: Vector2<f32> = transform_standard_sample(x_ball, C.transpose() * L, p_centre);
+    let x_ball: Vector2<f64> = sample_from_unit_ball(rng);
+    let p_rand: Vector2<f64> = transform_standard_sample(x_ball, C.transpose() * L, p_centre);
     p_rand
 }
 
-pub fn sample_from_unit_ball(rng: &mut ChaChaRng) -> Vector2<f32> {
+// pub fn create_informed_ellipsoid_bbox(
+//     p_start: &Vector2<f64>,
+//     p_goal: &Vector2<f64>,
+//     c_max: f64,
+// ) -> Rect<f64> {
+//     assert!(c_max < f64::INFINITY && c_max > 0.0);
+//     let c_min = (p_start - p_goal).norm();
+//     let p_centre = (p_start + p_goal) / 2.0;
+//     let r_1 = c_max / 2.0;
+//     let r_2 = (c_max.powi(2) - c_min.powi(2)).abs().sqrt() / 2.0;
+//     let alpha = f64::atan2(p_goal[1] - p_start[1], p_goal[0] - p_start[0]);
+//     let bbox = Rect::new(
+//         coord! { x: p_rand[0] - r_1, y: p_rand[1] - r_2},
+//         coord! { x: p_rand[0] + r_1, y: p_rand[1] + r_2},
+//     );
+//     bbox
+// }
+
+pub fn create_bbox_polygon(bbox: &Rect<f64>) -> Polygon<f64> {
+    let bbox_poly = Polygon::new(
+        LineString::new(vec![
+            coord! {x: bbox.min().x, y: bbox.min().y},
+            coord! {x: bbox.min().x, y: bbox.max().y},
+            coord! {x: bbox.max().x, y: bbox.max().y},
+            coord! {x: bbox.max().x, y: bbox.min().y},
+            coord! {x: bbox.min().x, y: bbox.min().y},
+        ]),
+        vec![],
+    );
+    bbox_poly
+}
+
+pub fn sample_from_unit_ball(rng: &mut ChaChaRng) -> Vector2<f64> {
     let mut p = Vector2::zeros();
     loop {
         p[0] = rng.gen_range(-1.0..1.0);
@@ -65,7 +96,7 @@ pub fn sample_from_unit_ball(rng: &mut ChaChaRng) -> Vector2<f32> {
     }
 }
 
-pub fn sample_from_bbox(bbox: &Rect<f32>, rng: &mut ChaChaRng) -> Vector2<f32> {
+pub fn sample_from_bbox(bbox: &Rect<f64>, rng: &mut ChaChaRng) -> Vector2<f64> {
     let x = rng.gen_range(bbox.min().x..bbox.max().x);
     let y = rng.gen_range(bbox.min().y..bbox.max().y);
     Vector2::new(x, y)
@@ -83,24 +114,24 @@ where
 }
 
 pub fn sample_from_triangulation(
-    triangulation: &Vec<Polygon<f32>>,
-    weighted_index_distribution: &rand::distributions::WeightedIndex<f32>,
+    triangulation: &Vec<Polygon<f64>>,
+    weighted_index_distribution: &rand::distributions::WeightedIndex<f64>,
     rng: &mut ChaChaRng,
-) -> Vector2<f32> {
+) -> Vector2<f64> {
     let triangle_idx = weighted_index_distribution.sample(rng);
     let triangle = triangulation[triangle_idx].clone();
     assert!(triangulation[triangle_idx].exterior().0.len() >= 4); // 3 points + 1 for the closing point
     let a = Vector2::new(triangle.exterior().0[0].x, triangle.exterior().0[0].y);
     let b = Vector2::new(triangle.exterior().0[1].x, triangle.exterior().0[1].y);
     let c = Vector2::new(triangle.exterior().0[2].x, triangle.exterior().0[2].y);
-    let r_1: f32 = rng.gen_range(0.0..1.0);
-    let r_2: f32 = rng.gen_range(0.0..1.0);
+    let r_1: f64 = rng.gen_range(0.0..1.0);
+    let r_2: f64 = rng.gen_range(0.0..1.0);
     let p_rand = (1.0 - r_1.sqrt()) * a + r_1.sqrt() * (1.0 - r_2) * b + r_1.sqrt() * r_2 * c;
     p_rand
 }
 
 #[allow(non_snake_case)]
-pub fn Cmtrx(Mmtrx: Matrix3<f32>, nu: Vector3<f32>) -> Matrix3<f32> {
+pub fn Cmtrx(Mmtrx: Matrix3<f64>, nu: Vector3<f64>) -> Matrix3<f64> {
     let mut Cmtrx = Matrix3::zeros();
 
     let c13 = -(Mmtrx[(1, 1)] * nu[1] + Mmtrx[(1, 2)] * nu[2]);
@@ -114,11 +145,11 @@ pub fn Cmtrx(Mmtrx: Matrix3<f32>, nu: Vector3<f32>) -> Matrix3<f32> {
 
 #[allow(non_snake_case)]
 pub fn Dmtrx(
-    D_l: Matrix3<f32>,
-    D_q: Matrix3<f32>,
-    D_c: Matrix3<f32>,
-    nu: Vector3<f32>,
-) -> Matrix3<f32> {
+    D_l: Matrix3<f64>,
+    D_q: Matrix3<f64>,
+    D_c: Matrix3<f64>,
+    nu: Vector3<f64>,
+) -> Matrix3<f64> {
     let D_q_res = D_q * Matrix3::from_partial_diagonal(&[nu[0].abs(), nu[1].abs(), nu[2].abs()]);
     let nu_squared = nu.component_mul(&nu);
     let D_c_res =
@@ -133,7 +164,7 @@ pub fn Dmtrx(
 }
 
 #[allow(non_snake_case)]
-pub fn Rmtrx(psi: f32) -> Matrix3<f32> {
+pub fn Rmtrx(psi: f64) -> Matrix3<f64> {
     let mut Rmtrx = Matrix3::zeros();
     Rmtrx[(0, 0)] = psi.cos();
     Rmtrx[(0, 1)] = -psi.sin();
@@ -146,28 +177,28 @@ pub fn Rmtrx(psi: f32) -> Matrix3<f32> {
 /// Wraps a value to the interval [x_min, x_max]
 ///
 /// Arguments:
-///     - x (f32): The value to be wrapped
-///     - x_min (f32): The lower bound of the interval
-///     - x_max (f32): The upper bound of the interval
+///     - x (f64): The value to be wrapped
+///     - x_min (f64): The lower bound of the interval
+///     - x_max (f64): The upper bound of the interval
 /// # Returns:
-///     - (f32): The wrapped value
-pub fn wrap_min_max(x: f32, x_min: f32, x_max: f32) -> f32 {
+///     - (f64): The wrapped value
+pub fn wrap_min_max(x: f64, x_min: f64, x_max: f64) -> f64 {
     x_min + modulo(x - x_min, x_max - x_min)
 }
 
-pub fn wrap_angle_to_pmpi(x: f32) -> f32 {
+pub fn wrap_angle_to_pmpi(x: f64) -> f64 {
     wrap_min_max(x, -consts::PI, consts::PI)
 }
 
-pub fn wrap_angle_to_02pi(x: f32) -> f32 {
+pub fn wrap_angle_to_02pi(x: f64) -> f64 {
     wrap_min_max(x, 0.0, 2.0 * consts::PI)
 }
 
-pub fn modulo(x: f32, y: f32) -> f32 {
+pub fn modulo(x: f64, y: f64) -> f64 {
     ((x % y) + y) % y
 }
 
-pub fn wrap_angle_diff_to_pmpi(x: f32, y: f32) -> f32 {
+pub fn wrap_angle_diff_to_pmpi(x: f64, y: f64) -> f64 {
     //println!("x: {}, y: {}", x, y);
     let diff1 = modulo(x - y, 2.0 * consts::PI);
     let diff2 = modulo(y - x, 2.0 * consts::PI);
@@ -179,23 +210,23 @@ pub fn wrap_angle_diff_to_pmpi(x: f32, y: f32) -> f32 {
     }
 }
 
-pub fn unwrap_angle(x_prev: f32, x: f32) -> f32 {
+pub fn unwrap_angle(x_prev: f64, x: f64) -> f64 {
     x_prev + wrap_angle_diff_to_pmpi(x, x_prev)
 }
 
-pub fn rad2deg(x: f32) -> f32 {
+pub fn rad2deg(x: f64) -> f64 {
     x * 180.0 / consts::PI
 }
 
-pub fn deg2rad(x: f32) -> f32 {
+pub fn deg2rad(x: f64) -> f64 {
     x * consts::PI / 180.0
 }
 
-pub fn saturate(x: f32, x_min: f32, x_max: f32) -> f32 {
+pub fn saturate(x: f64, x_min: f64, x_max: f64) -> f64 {
     x.min(x_max).max(x_min)
 }
 
-pub fn compute_path_length_slice(xs_array: &Vec<[f32; 6]>) -> f32 {
+pub fn compute_path_length_slice(xs_array: &Vec<[f64; 6]>) -> f64 {
     xs_array
         .iter()
         .zip(xs_array.iter().skip(1))
@@ -206,7 +237,7 @@ pub fn compute_path_length_slice(xs_array: &Vec<[f32; 6]>) -> f32 {
         .sum()
 }
 
-pub fn compute_path_length_nalgebra(xs_array: &Vec<Vector6<f32>>) -> f32 {
+pub fn compute_path_length_nalgebra(xs_array: &Vec<Vector6<f64>>) -> f64 {
     xs_array
         .iter()
         .zip(xs_array.iter().skip(1))
@@ -226,8 +257,8 @@ where
 
 pub fn draw_current_situation(
     filename: &str,
-    xs_array: &Vec<Vector6<f32>>,
-    waypoints: &Option<Vec<Vector6<f32>>>,
+    xs_array: &Vec<Vector6<f64>>,
+    waypoints: &Option<Vec<Vector6<f64>>>,
     tree: &Tree<RRTNode>,
     enc_data: &ENCData,
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -237,19 +268,19 @@ pub fn draw_current_situation(
     let buffer = 500.0;
     let min_x_ = xs_array
         .iter()
-        .fold(f32::INFINITY, |acc, xs| acc.min(xs[0] as f32))
+        .fold(f64::INFINITY, |acc, xs| acc.min(xs[0] as f64))
         - buffer;
     let min_y_ = xs_array
         .iter()
-        .fold(f32::INFINITY, |acc, xs| acc.min(xs[1] as f32))
+        .fold(f64::INFINITY, |acc, xs| acc.min(xs[1] as f64))
         - buffer;
     let max_x_ = xs_array
         .iter()
-        .fold(f32::NEG_INFINITY, |acc, xs| acc.max(xs[0] as f32))
+        .fold(f64::NEG_INFINITY, |acc, xs| acc.max(xs[0] as f64))
         + buffer;
     let max_y_ = xs_array
         .iter()
-        .fold(f32::NEG_INFINITY, |acc, xs| acc.max(xs[1] as f32))
+        .fold(f64::NEG_INFINITY, |acc, xs| acc.max(xs[1] as f64))
         + buffer;
     let mut chart = ChartBuilder::on(&drawing_area)
         .caption("ENC Hazards vs linestring", ("sans-serif", 40).into_font())
@@ -258,8 +289,8 @@ pub fn draw_current_situation(
         .build_cartesian_2d(
             min_y_..max_y_,
             min_x_..max_x_,
-            // bbox.min().y as f32..bbox.max().y as f32,
-            // bbox.min().x as f32..bbox.max().x as f32,
+            // bbox.min().y as f64..bbox.max().y as f64,
+            // bbox.min().x as f64..bbox.max().x as f64,
         )?;
 
     chart
@@ -301,16 +332,16 @@ pub fn draw_current_situation(
 
 pub fn draw_multipolygon(
     drawing_area: &DrawingArea<BitMapBackend, Shift>,
-    chart: &mut ChartContext<BitMapBackend, Cartesian2d<RangedCoordf32, RangedCoordf32>>,
-    multipolygon: &MultiPolygon<f32>,
+    chart: &mut ChartContext<BitMapBackend, Cartesian2d<RangedCoordf64, RangedCoordf64>>,
+    multipolygon: &MultiPolygon<f64>,
     color: &RGBColor,
 ) -> Result<(), Box<dyn std::error::Error>> {
     for polygon in multipolygon.0.iter() {
-        let poly_points: Vec<(f32, f32)> = polygon
+        let poly_points: Vec<(f64, f64)> = polygon
             .exterior()
             .0
             .iter()
-            .map(|p| (p.y as f32, p.x as f32))
+            .map(|p| (p.y as f64, p.x as f64))
             .collect();
         // println!("poly_points: {:?}", poly_points);
         chart.draw_series(LineSeries::new(poly_points, color))?;
@@ -321,16 +352,16 @@ pub fn draw_multipolygon(
 
 pub fn draw_triangulation(
     drawing_area: &DrawingArea<BitMapBackend, Shift>,
-    chart: &mut ChartContext<BitMapBackend, Cartesian2d<RangedCoordf32, RangedCoordf32>>,
-    triangulation: &Vec<Polygon<f32>>,
+    chart: &mut ChartContext<BitMapBackend, Cartesian2d<RangedCoordf64, RangedCoordf64>>,
+    triangulation: &Vec<Polygon<f64>>,
     color: &RGBColor,
 ) -> Result<(), Box<dyn std::error::Error>> {
     for triangle in triangulation.iter() {
-        let poly_points: Vec<(f32, f32)> = triangle
+        let poly_points: Vec<(f64, f64)> = triangle
             .exterior()
             .0
             .iter()
-            .map(|p| (p.y as f32, p.x as f32))
+            .map(|p| (p.y as f64, p.x as f64))
             .collect();
         // println!("poly_points: {:?}", poly_points);
         chart.draw_series(LineSeries::new(poly_points, color))?;
@@ -341,13 +372,13 @@ pub fn draw_triangulation(
 
 pub fn draw_trajectory(
     drawing_area: &DrawingArea<BitMapBackend, Shift>,
-    chart: &mut ChartContext<BitMapBackend, Cartesian2d<RangedCoordf32, RangedCoordf32>>,
-    xs_array: &Vec<Vector6<f32>>,
+    chart: &mut ChartContext<BitMapBackend, Cartesian2d<RangedCoordf64, RangedCoordf64>>,
+    xs_array: &Vec<Vector6<f64>>,
     color: &RGBColor,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let points: Vec<(f32, f32)> = xs_array
+    let points: Vec<(f64, f64)> = xs_array
         .iter()
-        .map(|xs| (xs[1] as f32, xs[0] as f32))
+        .map(|xs| (xs[1] as f64, xs[0] as f64))
         .collect();
     //println!("points: {:?}", points);
     chart.draw_series(LineSeries::new(points, color))?;
@@ -355,7 +386,7 @@ pub fn draw_trajectory(
     Ok(())
 }
 
-pub fn create_ship_polygon(state: &Vector6<f32>, length: f32, width: f32) -> Polygon<f32> {
+pub fn create_ship_polygon(state: &Vector6<f64>, length: f64, width: f64) -> Polygon<f64> {
     let os_poly_non_rot = Polygon::new(
         LineString::new(vec![
             coord! {x: state[0] + length / 2.0, y: state[1]},
@@ -368,7 +399,7 @@ pub fn create_ship_polygon(state: &Vector6<f32>, length: f32, width: f32) -> Pol
         vec![],
     );
     let os_poly = os_poly_non_rot.rotate_around_point(
-        state[2] * 180.0 / std::f32::consts::PI,
+        state[2] * 180.0 / std::f64::consts::PI,
         Point::new(state[0], state[1]),
     );
     os_poly
@@ -376,16 +407,16 @@ pub fn create_ship_polygon(state: &Vector6<f32>, length: f32, width: f32) -> Pol
 
 pub fn draw_ownship(
     drawing_area: &DrawingArea<BitMapBackend, Shift>,
-    chart: &mut ChartContext<BitMapBackend, Cartesian2d<RangedCoordf32, RangedCoordf32>>,
-    state: &Vector6<f32>,
+    chart: &mut ChartContext<BitMapBackend, Cartesian2d<RangedCoordf64, RangedCoordf64>>,
+    state: &Vector6<f64>,
     color: &RGBColor,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let os_poly = create_ship_polygon(state, 20.0, 4.0);
-    let poly_points: Vec<(f32, f32)> = os_poly
+    let poly_points: Vec<(f64, f64)> = os_poly
         .exterior()
         .0
         .iter()
-        .map(|p| (p.y as f32, p.x as f32))
+        .map(|p| (p.y as f64, p.x as f64))
         .collect();
     chart.draw_series(LineSeries::new(poly_points, color))?;
     drawing_area.present()?;
@@ -393,11 +424,11 @@ pub fn draw_ownship(
 }
 
 pub fn draw_steering_results(
-    xs_start: &Vector6<f32>,
-    xs_goal: &Vector6<f32>,
-    refs_array: &Vec<(f32, f32)>,
-    xs_array: &Vec<Vector6<f32>>,
-    _acceptance_radius: f32,
+    xs_start: &Vector6<f64>,
+    xs_goal: &Vector6<f64>,
+    refs_array: &Vec<(f64, f64)>,
+    xs_array: &Vec<Vector6<f64>>,
+    _acceptance_radius: f64,
 ) -> Result<(), Box<dyn std::error::Error>> {
     draw_north_east_chart(
         "steer.png",
@@ -406,27 +437,27 @@ pub fn draw_steering_results(
     )?;
 
     // Draw psi vs psi_d
-    let mut psi_array: Vec<f32> = xs_array.iter().map(|xs| rad2deg(xs[2])).collect();
+    let mut psi_array: Vec<f64> = xs_array.iter().map(|xs| rad2deg(xs[2])).collect();
     psi_array.remove(0);
-    let psi_d_array: Vec<f32> = refs_array.iter().map(|refs| rad2deg(refs.1)).collect();
+    let psi_d_array: Vec<f64> = refs_array.iter().map(|refs| rad2deg(refs.1)).collect();
 
-    let psi_error_array: Vec<f32> = psi_array
+    let psi_error_array: Vec<f64> = psi_array
         .iter()
         .zip(psi_d_array.iter())
         .map(|(psi, psi_d)| wrap_angle_diff_to_pmpi(*psi_d, *psi))
         .collect();
-    let _ref_error_array: Vec<f32> = psi_error_array.iter().map(|_| 0.0).collect();
+    let _ref_error_array: Vec<f64> = psi_error_array.iter().map(|_| 0.0).collect();
 
     draw_variable_vs_reference("psi_comp.png", "psi error", &psi_array, &psi_d_array)?;
 
     // Draw u vs u_d
-    let mut u_array: Vec<f32> = xs_array
+    let mut u_array: Vec<f64> = xs_array
         .iter()
         .map(|xs| (xs[3] * xs[3] + xs[4] * xs[4]).sqrt())
         .collect();
     u_array.remove(0);
-    let u_d_array: Vec<f32> = refs_array.iter().map(|refs| refs.0).collect();
-    let _u_error_array: Vec<f32> = u_array
+    let u_d_array: Vec<f64> = refs_array.iter().map(|refs| refs.0).collect();
+    let _u_error_array: Vec<f64> = u_array
         .iter()
         .zip(u_d_array.iter())
         .map(|(u, u_d)| u_d - u)
@@ -438,9 +469,9 @@ pub fn draw_steering_results(
 pub fn draw_tree(
     filename: &str,
     tree: &Tree<RRTNode>,
-    p_start: &Vector2<f32>,
-    p_goal: &Vector2<f32>,
-    xs_soln_array: Option<&Vec<[f32; 6]>>,
+    p_start: &Vector2<f64>,
+    p_goal: &Vector2<f64>,
+    xs_soln_array: Option<&Vec<[f64; 6]>>,
     enc_data: &ENCData,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let drawing_area = BitMapBackend::new(filename, (640, 480)).into_drawing_area();
@@ -455,8 +486,8 @@ pub fn draw_tree(
         .x_label_area_size(50)
         .y_label_area_size(50)
         .build_cartesian_2d(
-            bbox.min().y as f32..bbox.max().y as f32,
-            bbox.min().x as f32..bbox.max().x as f32,
+            bbox.min().y as f64..bbox.max().y as f64,
+            bbox.min().x as f64..bbox.max().x as f64,
         )?;
 
     chart
@@ -474,8 +505,8 @@ pub fn draw_tree(
         Some(xs_soln_array) => {
             let p_soln_array = xs_soln_array
                 .iter()
-                .map(|xs| (xs[1] as f32, xs[0] as f32))
-                .collect::<Vec<(f32, f32)>>();
+                .map(|xs| (xs[1] as f64, xs[0] as f64))
+                .collect::<Vec<(f64, f64)>>();
             chart.draw_series(LineSeries::new(p_soln_array, &BLUE))?;
         }
         None => {}
@@ -486,7 +517,7 @@ pub fn draw_tree(
 
 pub fn draw_tree_lines(
     drawing_area: &DrawingArea<BitMapBackend, Shift>,
-    chart: &mut ChartContext<BitMapBackend, Cartesian2d<RangedCoordf32, RangedCoordf32>>,
+    chart: &mut ChartContext<BitMapBackend, Cartesian2d<RangedCoordf64, RangedCoordf64>>,
     tree: &Tree<RRTNode>,
     node_id: &NodeId,
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -500,10 +531,10 @@ pub fn draw_tree_lines(
 
         let child_node_data = tree.get(child_id).unwrap().data().clone();
         let points = vec![
-            (node_data.state[1] as f32, node_data.state[0] as f32),
+            (node_data.state[1] as f64, node_data.state[0] as f64),
             (
-                child_node_data.state[1] as f32,
-                child_node_data.state[0] as f32,
+                child_node_data.state[1] as f64,
+                child_node_data.state[0] as f64,
             ),
         ];
 
@@ -525,8 +556,8 @@ pub fn draw_tree_lines(
 
 pub fn draw_north_east_chart(
     filename: &str,
-    xs_array: &Vec<Vector6<f32>>,
-    waypoints: &Vec<Vector6<f32>>,
+    xs_array: &Vec<Vector6<f64>>,
+    waypoints: &Vec<Vector6<f64>>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let buffer = 100.0;
     let min_wp_y = waypoints
@@ -562,8 +593,8 @@ pub fn draw_north_east_chart(
         .x_label_area_size(25)
         .y_label_area_size(25)
         .build_cartesian_2d(
-            min_wp_y as f32..max_wp_y as f32,
-            min_wp_x as f32..max_wp_x as f32,
+            min_wp_y as f64..max_wp_y as f64,
+            min_wp_x as f64..max_wp_x as f64,
         )?;
 
     chart
@@ -575,15 +606,15 @@ pub fn draw_north_east_chart(
 
     let ne_array_points = xs_array
         .iter()
-        .map(|x| (x[1] as f32, x[0] as f32))
-        .collect::<Vec<(f32, f32)>>();
+        .map(|x| (x[1] as f64, x[0] as f64))
+        .collect::<Vec<(f64, f64)>>();
 
     chart.draw_series(LineSeries::new(ne_array_points, &BLACK))?;
 
     let ne_waypoints = waypoints
         .iter()
-        .map(|x| (x[1] as f32, x[0] as f32))
-        .collect::<Vec<(f32, f32)>>();
+        .map(|x| (x[1] as f64, x[0] as f64))
+        .collect::<Vec<(f64, f64)>>();
 
     chart.draw_series(LineSeries::new(ne_waypoints.clone(), &BLUE))?;
     chart.draw_series(PointSeries::of_element(
@@ -604,24 +635,24 @@ pub fn draw_north_east_chart(
 pub fn draw_variable_vs_reference(
     filename: &str,
     chart_name: &str,
-    variable: &Vec<f32>,
-    reference: &Vec<f32>,
+    variable: &Vec<f64>,
+    reference: &Vec<f64>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let root = BitMapBackend::new(filename, (640, 480)).into_drawing_area();
     root.fill(&WHITE)?;
     let root = root.margin(12, 12, 12, 12);
 
-    let samples: Vec<f32> = (0..variable.len())
+    let samples: Vec<f64> = (0..variable.len())
         .collect::<Vec<usize>>()
         .iter()
-        .map(|x| *x as f32)
+        .map(|x| *x as f64)
         .collect();
-    let var_points = variable.iter().map(|x| *x as f32).collect::<Vec<f32>>();
-    let min_var: f32 = var_points.iter().fold(f32::INFINITY, |a, b| a.min(*b));
-    let max_var: f32 = var_points.iter().fold(-f32::INFINITY, |a, b| a.max(*b));
-    let ref_points = reference.iter().map(|x| *x as f32).collect::<Vec<f32>>();
-    let min_ref: f32 = ref_points.iter().fold(f32::INFINITY, |a, b| a.min(*b));
-    let max_ref: f32 = ref_points.iter().fold(-f32::INFINITY, |a, b| a.max(*b));
+    let var_points = variable.iter().map(|x| *x as f64).collect::<Vec<f64>>();
+    let min_var: f64 = var_points.iter().fold(f64::INFINITY, |a, b| a.min(*b));
+    let max_var: f64 = var_points.iter().fold(-f64::INFINITY, |a, b| a.max(*b));
+    let ref_points = reference.iter().map(|x| *x as f64).collect::<Vec<f64>>();
+    let min_ref: f64 = ref_points.iter().fold(f64::INFINITY, |a, b| a.min(*b));
+    let max_ref: f64 = ref_points.iter().fold(-f64::INFINITY, |a, b| a.max(*b));
 
     let min_y = min_var.min(min_ref);
     let max_y = max_var.max(max_ref);
@@ -629,7 +660,7 @@ pub fn draw_variable_vs_reference(
         .caption(chart_name, ("sans-serif", 40).into_font())
         .x_label_area_size(25)
         .y_label_area_size(25)
-        .build_cartesian_2d(0f32..*samples.last().unwrap(), min_y..max_y)?;
+        .build_cartesian_2d(0f64..*samples.last().unwrap(), min_y..max_y)?;
 
     chart
         .configure_mesh()
@@ -638,10 +669,10 @@ pub fn draw_variable_vs_reference(
         .y_label_formatter(&|x| format!("{:.1}", x))
         .draw()?;
 
-    let ref_lineseries_data = iter::zip(samples.clone(), ref_points).collect::<Vec<(f32, f32)>>();
+    let ref_lineseries_data = iter::zip(samples.clone(), ref_points).collect::<Vec<(f64, f64)>>();
     chart.draw_series(LineSeries::new(ref_lineseries_data, &RED))?;
 
-    let var_lineseries_data = iter::zip(samples, var_points).collect::<Vec<(f32, f32)>>();
+    let var_lineseries_data = iter::zip(samples, var_points).collect::<Vec<(f64, f64)>>();
     chart.draw_series(LineSeries::new(var_lineseries_data, &BLUE))?;
 
     root.present()?;
@@ -679,7 +710,7 @@ mod tests {
     fn test_wrap_angle_diff_pmpi() {
         let x = -3.055;
         let y = 2.4318;
-        let diff = wrap_angle_diff_to_pmpi(x, y);
+        let _diff = wrap_angle_diff_to_pmpi(x, y);
         //println!("diff: {:?}", diff);
         let diff1 =
             wrap_angle_diff_to_pmpi(-179.0 * consts::PI / 180.0, 179.0 * consts::PI / 180.0);
@@ -698,7 +729,7 @@ mod tests {
         let D_c = Matrix3::from_partial_diagonal(&[0.0, 0.0, 3224.0]);
         let D_q = Matrix3::from_partial_diagonal(&[135.0, 2000.0, 0.0]);
         let D_l = Matrix3::from_partial_diagonal(&[50.0, 200.0, 1281.0]);
-        let nu: Vector3<f32> = Vector3::new(1.0, 1.0, 1.0);
+        let nu: Vector3<f64> = Vector3::new(1.0, 1.0, 1.0);
 
         let Dmtrx_res = Dmtrx(D_l, D_q, D_c, nu);
         println!("Dmtrx_res: {:?}", Dmtrx_res);
@@ -719,7 +750,7 @@ mod tests {
     #[allow(non_snake_case)]
     #[test]
     fn test_coriolis_matrix() {
-        let nu: Vector3<f32> = Vector3::new(1.0, 1.0, 1.0);
+        let nu: Vector3<f64> = Vector3::new(1.0, 1.0, 1.0);
         let Mmtrx = Matrix3::from_partial_diagonal(&[3000.0, 3000.0, 19000.0]);
         let Cmtrx_res = Cmtrx(Mmtrx, nu);
         println!("Cmtrx_res: {:?}", Cmtrx_res);

@@ -196,7 +196,6 @@ class RRTStar(ci.ICOLAV):
                     rrt_solution: dict = self._rrt.grow_towards_goal(
                         ownship_state=ownship_state.tolist(),
                         U_d=U_d,
-                        do_list=[],
                         initialized=False,
                         return_on_first_solution=False,
                     )
@@ -339,7 +338,7 @@ if __name__ == "__main__":
         params.rrt.params = RRTStarParams(
             max_nodes=10000,
             max_iter=25000,
-            max_time=200.0,
+            max_time=300.0,
             iter_between_direct_goal_growth=500,
             min_node_dist=15.0,
             goal_radius=700.0,
