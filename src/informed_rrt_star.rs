@@ -637,13 +637,6 @@ impl InformedRRTStar {
         Ok(parent_id.clone())
     }
 
-    pub fn non_feasible_steer(&self, z_start: &RRTNode, z_end: &RRTNode) -> bool {
-        // If its new node is too close and the angle between the two nodes is too large, skip
-        let p_end = Vector2::new(z_end.state[0], z_end.state[1]);
-        let p_start = Vector2::new(z_start.state[0], z_start.state[1]);
-        (p_start - p_end).norm() < 5.0 * self.steering.ship_model.params.length
-    }
-
     pub fn rewire(&mut self, z_new: &RRTNode, Z_near: &Vec<RRTNode>) -> PyResult<()> {
         let z_new_parent_id = self.get_parent_id(&z_new)?;
         for z_near in Z_near.iter() {

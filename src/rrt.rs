@@ -27,7 +27,6 @@ pub struct RRTParams {
     pub max_iter: u64,
     pub max_time: f64,
     pub iter_between_direct_goal_growth: u64,
-    pub min_node_dist: f64,
     pub goal_radius: f64,
     pub step_size: f64,
     pub min_steering_time: f64,
@@ -42,7 +41,6 @@ impl RRTParams {
             max_iter: 100000,
             max_time: 300.0,
             iter_between_direct_goal_growth: 100,
-            min_node_dist: 10.0,
             goal_radius: 100.0,
             step_size: 0.2,
             min_steering_time: 2.0,
@@ -605,8 +603,7 @@ impl RRT {
         let p_end = Vector2::new(z_end.state[0], z_end.state[1]);
         let p_start = Vector2::new(z_start.state[0], z_start.state[1]);
         let los = (p_end[1] - p_start[0]).atan2(p_end[0] - p_start[0]);
-        (p_start - p_end).norm() < self.params.min_node_dist
-            && los.abs() * 180.0 / std::f64::consts::PI > 90.0
+        (p_start - p_end).norm() < 5.0 * self.steering.ship_model.params.length
     }
 
     pub fn nearest(&mut self, z_rand: &RRTNode) -> PyResult<RRTNode> {
@@ -788,7 +785,6 @@ mod tests {
                 max_iter: 100000,
                 max_time: 300.0,
                 iter_between_direct_goal_growth: 100,
-                min_node_dist: 20.0,
                 goal_radius: 100.0,
                 step_size: 1.0,
                 min_steering_time: 1.0,
@@ -811,7 +807,6 @@ mod tests {
                 max_iter: 10000,
                 max_time: 300.0,
                 iter_between_direct_goal_growth: 100,
-                min_node_dist: 30.0,
                 goal_radius: 600.0,
                 step_size: 0.5,
                 min_steering_time: 1.0,
@@ -849,7 +844,6 @@ mod tests {
                 max_iter: 10000,
                 max_time: 300.0,
                 iter_between_direct_goal_growth: 100,
-                min_node_dist: 10.0,
                 goal_radius: 10.0,
                 step_size: 0.5,
                 min_steering_time: 1.0,
