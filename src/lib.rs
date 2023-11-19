@@ -1,7 +1,7 @@
 //! # RRT* Library
 //! Implements two Rapidly-exploring Random Tree (RRT*) algorithms in Rust:
 //! - PQ-RRT* (Potential field Quick RRT*)
-//! - Informed RRT*
+//! - IRRT* (Informed RRT*)
 //! - RRT*
 //! - RRT
 //!
@@ -14,8 +14,8 @@ mod steering;
 mod utils;
 
 pub mod enc_data;
-pub mod informed_rrt_star;
-pub mod pq_rrt_star;
+pub mod irrt_star;
+pub mod pqrrt_star;
 pub mod rrt;
 pub mod rrt_star;
 
@@ -31,8 +31,8 @@ pub mod rrt_star;
 /// import the module.
 #[pymodule]
 fn rrt_star_lib(_py: Python<'_>, m: &PyModule) -> PyResult<()> {
-    m.add_class::<crate::informed_rrt_star::InformedRRTStar>()?;
-    m.add_class::<crate::pq_rrt_star::PQRRTStar>()?;
+    m.add_class::<crate::irrt_star::IRRTStar>()?;
+    m.add_class::<crate::pqrrt_star::PQRRTStar>()?;
     m.add_class::<crate::rrt_star::RRTStar>()?;
     m.add_class::<crate::rrt::RRT>()?;
     Ok(())

@@ -129,6 +129,10 @@ impl RRT {
         }
     }
 
+    fn get_num_nodes(&self) -> PyResult<u64> {
+        Ok(self.num_nodes)
+    }
+
     #[allow(non_snake_case)]
     pub fn set_speed_reference(&mut self, U_d: f64) -> PyResult<()> {
         Ok(self.U_d = U_d)
