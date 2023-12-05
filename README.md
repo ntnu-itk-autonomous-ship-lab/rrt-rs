@@ -24,6 +24,5 @@ Rust library containing Rapidly-exploring Random Tree variants for trajectory pl
 ## Future enhancements/todos
 
 - Properly separate rust library functionality from the PyO3 wrapping framework, to allow for easy usage in Rust without considering Python.
-- Test implemented RRT-variants extensively in the colav-simulator.
-- Improve steering functionality used in the algorithms -> Ensure strict start -> endpoint steering constraints. Extracted solutions are re-steered through ad-hoc using LOS-guidance.
+- Use optimization-based steering.
 
