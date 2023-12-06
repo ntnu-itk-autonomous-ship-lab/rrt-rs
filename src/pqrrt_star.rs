@@ -665,7 +665,7 @@ impl PQRRTStar {
                     &z_from.clone(),
                     &z_near.clone(),
                     10.0 * self.params.max_steering_time,
-                    5.0,
+                    1.0,
                 )?;
                 let xs_new_near: Vector6<f64> = xs_array.last().copied().unwrap();
                 if utils::rad2deg(
