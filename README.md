@@ -11,7 +11,7 @@ Rust library containing Rapidly-exploring Random Tree variants for trajectory pl
 - shapely
 - numpy
 - seacharts: https://github.com/trymte/seacharts
-- colav_simulator: https://github.com/NTNU-Autoship-Internal/colav_simulator
+- colav_simulator: https://github.com/NTNU-Autoship-Internal/colav_simulator (for the examples)
 
 ## Installation and usage in Python
 
