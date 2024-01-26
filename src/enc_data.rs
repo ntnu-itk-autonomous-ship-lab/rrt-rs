@@ -68,15 +68,15 @@ impl ENCData {
         py_safe_sea_triangulation: &PyList,
     ) -> PyResult<()> {
         let mut poly_vec = vec![];
+        let mut weights_vec = vec![];
         for py_poly in py_safe_sea_triangulation {
             let polygon = self.transfer_polygon(py_poly)?;
             poly_vec.push(polygon.clone());
-            self.safe_sea_triangulation_weights
-                .push(geo::Area::unsigned_area(&polygon.clone()));
+            weights_vec.push(geo::Area::unsigned_area(&polygon.clone()));
             //println!("Area: {:?}", geo::Area::unsigned_area(&polygon));
         }
         self.safe_sea_triangulation = poly_vec;
-
+        self.safe_sea_triangulation_weights = weights_vec;
         self.save_triangulation_to_json()?;
         Ok(())
     }

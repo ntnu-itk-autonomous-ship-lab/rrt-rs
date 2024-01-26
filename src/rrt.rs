@@ -94,9 +94,9 @@ pub struct RRT {
 impl RRT {
     #[new]
     pub fn py_new(los: LOSGuidanceParams, model: KinematicCSOGParams, params: RRTParams) -> Self {
-        println!("RRT parameters: {:?}", params);
-        println!("RRT model: {:?}", model);
-        println!("RRT LOS: {:?}", los);
+        // println!("RRT parameters: {:?}", params);
+        // println!("RRT model: {:?}", model);
+        // println!("RRT LOS: {:?}", los);
         Self {
             c_best: std::f64::INFINITY,
             solutions: Vec::new(),
@@ -381,10 +381,12 @@ impl RRT {
         let z_goal_ = self.insert(&z_goal_attempt.clone(), &z)?;
         self.solutions.push(z_goal_.clone());
         self.c_best = self.c_best.min(z_goal_.cost);
-        println!(
-            "Solution Found! Num iter: {} | Num nodes: {} | c: {} | c_best: {}",
-            self.num_iter, self.num_nodes, z_goal_.cost, self.c_best
-        );
+        if z_goal_.cost <= self.c_best {
+            println!(
+                "Solution Found! Num iter: {} | Num nodes: {} | c: {} | c_best: {}",
+                self.num_iter, self.num_nodes, z_goal_.cost, self.c_best
+            );
+        }
         Ok(())
     }
 
