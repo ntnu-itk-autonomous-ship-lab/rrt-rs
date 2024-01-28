@@ -5,6 +5,19 @@ Rust library containing Rapidly-exploring Random Tree variants for trajectory pl
 [![python version](https://img.shields.io/badge/python-3.10-blue)]()
 [![python version](https://img.shields.io/badge/python-3.11-blue)]()
 
+## Citation
+If you are using `RRTs` for ship trajectory planning or behavior generation in academic work, please use the following citation:
+```
+@Article{Tengesdal2024csrrt,
+  author  = {Trym Tengesdal and Tom A. Pedersen and Tor A. Johansen},
+  journal = {Ocean Engineering},
+  title   = {A Comparative Study of Rapidly-exploring Random Tree Algorithms Applied to Ship Trajectory Planning and Behavior Generation},
+  year    = {2023},
+  note    = {Submitted},
+}
+```
+
+
 ## Python Dependencies
 - maturin
 - matplotlib
