@@ -6,7 +6,7 @@ Rust library containing Rapidly-exploring Random Tree variants for trajectory pl
 [![python version](https://img.shields.io/badge/python-3.11-blue)]()
 
 ## Citation
-If you are using `RRTs` for ship trajectory planning or behavior generation in academic work, please use the following citation:
+If you are using `RRTs` for ship trajectory planning or behavior generation in your work, please use the following citation:
 ```
 @Article{Tengesdal2024csrrt,
   author  = {Trym Tengesdal and Tom A. Pedersen and Tor A. Johansen},
