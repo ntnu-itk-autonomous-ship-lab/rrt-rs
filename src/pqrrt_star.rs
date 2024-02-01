@@ -313,15 +313,18 @@ impl PQRRTStar {
                 self.rewire(&z_new, &Z_near)?;
             }
             self.num_iter += 1;
-            if self.num_iter % 5000 == 0 {
-                println!(
-                    "Num iter: {} | Num nodes: {} | c_best: {}",
-                    self.num_iter, self.num_nodes, self.c_best
-                );
-            }
+            // if self.num_iter % 5000 == 0 {
+            //     println!(
+            //         "Num iter: {} | Num nodes: {} | c_best: {}",
+            //         self.num_iter, self.num_nodes, self.c_best
+            //     );
+            // }
 
             if start.elapsed().as_secs() as f64 > self.params.max_time {
-                println!("PQRRT* timed out after {} seconds", self.params.max_time);
+                println!(
+                    "PQRRT* timed out after {} seconds",
+                    start.elapsed().as_millis() as f64 / 1000.0
+                );
                 break;
             }
         }
