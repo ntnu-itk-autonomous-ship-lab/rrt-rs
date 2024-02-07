@@ -80,6 +80,7 @@ impl RRTStarParams {
 pub struct RRTStar {
     pub c_best: f64,
     pub solutions: Vec<NodeId>, // goal state ID for each solution
+    pub opt_soln: RRTResult,
     pub params: RRTStarParams,
     pub steering: LOSSteering<KinematicCSOG>,
     pub xs_start: Vector6<f64>,
@@ -108,6 +109,7 @@ impl RRTStar {
         Self {
             c_best: std::f64::INFINITY,
             solutions: Vec::new(),
+            opt_soln: RRTResult::new((vec![], vec![], vec![], vec![], std::f64::INFINITY)),
             params: params.clone(),
             steering: LOSSteering::new(los, model),
             xs_start: Vector6::zeros(),
@@ -126,6 +128,7 @@ impl RRTStar {
     pub fn reset(&mut self, seed: Option<u64>) {
         self.c_best = std::f64::INFINITY;
         self.solutions = Vec::new();
+        self.opt_soln = RRTResult::new((vec![], vec![], vec![], vec![], std::f64::INFINITY));
         self.num_nodes = 0;
         self.num_iter = 0;
         self.rtree = RTree::new();
@@ -135,6 +138,10 @@ impl RRTStar {
         } else {
             self.rng = ChaChaRng::from_entropy();
         }
+    }
+
+    fn get_optimal_solution(&self, py: Python<'_>) -> PyResult<PyObject> {
+        Ok(self.opt_soln.to_object(py))
     }
 
     fn get_num_nodes(&self) -> PyResult<u64> {
@@ -318,7 +325,7 @@ impl RRTStar {
                 break;
             }
         }
-        let opt_soln = match self.extract_best_solution() {
+        self.opt_soln = match self.extract_best_solution() {
             Ok(soln) => soln,
             Err(e) => {
                 println!("No solution found. Error msg: {:?}", e);
@@ -328,7 +335,7 @@ impl RRTStar {
         let duration = start.elapsed();
         println!("RRT* runtime: {:?}", duration.as_millis() as f64 / 1000.0);
         //self.draw_tree(Some(&opt_soln))?;
-        Ok(opt_soln.to_object(py))
+        Ok(self.opt_soln.to_object(py))
     }
 }
 
