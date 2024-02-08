@@ -307,17 +307,13 @@ impl RRT {
             //     );
             // }
             if start.elapsed().as_secs() as f64 > self.params.max_time {
-                println!(
-                    "RRT timed out after {} seconds",
-                    start.elapsed().as_millis() as f64 / 1000.0
-                );
                 break;
             }
         }
         self.opt_soln = match self.extract_best_solution() {
             Ok(soln) => soln,
             Err(e) => {
-                println!("No solution found. Error msg: {:?}", e);
+                println!("No solution found. Check the feasibility of the planning problem (algorithm tuning, safe sea CDT and considered start + goal states).");
                 RRTResult::new((vec![], vec![], vec![], vec![], std::f64::INFINITY))
             }
         };
@@ -390,13 +386,13 @@ impl RRT {
     pub fn add_solution(&mut self, z: &RRTNode, z_goal_attempt: &RRTNode) -> PyResult<()> {
         let z_goal_ = self.insert(&z_goal_attempt.clone(), &z)?;
         self.solutions.push(z_goal_.clone());
-        self.c_best = self.c_best.min(z_goal_.cost);
-        if z_goal_.cost <= self.c_best {
+        if z_goal_.cost < self.c_best {
             println!(
-                "Solution Found! Num iter: {} | Num nodes: {} | c: {} | c_best: {}",
+                "Solution Found! Num iter: {} | Num nodes: {} | new c_best: {} | prev c_best: {}",
                 self.num_iter, self.num_nodes, z_goal_.cost, self.c_best
             );
         }
+        self.c_best = self.c_best.min(z_goal_.cost);
         Ok(())
     }
 
@@ -771,12 +767,13 @@ impl RRT {
                 }
             },
         );
-        println!(
-            "Extracted best solution: {} | {}",
-            opt_soln.cost,
-            opt_soln.states.len()
-        );
         self.optimize_solution(&mut opt_soln)?;
+        println!(
+            "Extracted best solution: {:.2} | Node length: {} | Tree size: {}",
+            opt_soln.cost,
+            opt_soln.states.len(),
+            self.num_nodes
+        );
         Ok(opt_soln)
     }
 
