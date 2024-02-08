@@ -769,7 +769,7 @@ impl RRT {
         );
         self.optimize_solution(&mut opt_soln)?;
         println!(
-            "Extracted best solution: {:.2} | Node length: {} | Tree size: {}",
+            "Extracted best solution: {:.2} | Number of nodes: {} | Tree size: {}",
             opt_soln.cost,
             opt_soln.states.len(),
             self.num_nodes
