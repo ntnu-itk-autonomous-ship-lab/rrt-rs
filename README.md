@@ -9,11 +9,10 @@ Rust library containing Rapidly-exploring Random Tree variants for trajectory pl
 If you are using `RRTs` for ship trajectory planning or behavior generation in your work, please use the following citation:
 ```
 @Article{Tengesdal2024csrrt,
-  author  = {Trym Tengesdal and Tom A. Pedersen and Tor A. Johansen},
-  journal = {Ocean Engineering},
-  title   = {A Comparative Study of Rapidly-exploring Random Tree Algorithms Applied to Ship Trajectory Planning and Behavior Generation},
-  year    = {2023},
-  note    = {Submitted},
+  title={A Comparative Study of Rapidly-exploring Random Tree Algorithms Applied to Ship Trajectory Planning and Behavior Generation},
+  author={Tengesdal, Trym and Pedersen, Tom Arne and Johansen, Tor Arne},
+  journal={arXiv preprint arXiv:2403.01194},
+  year={2024}
 }
 ```
 
