@@ -210,10 +210,13 @@ impl ShipModel for KinematicCSOG {
         let chi_diff = utils::wrap_angle_diff_to_pmpi(chi_d_unwrapped, chi_unwrapped);
         self.chi_d_prev = chi_d;
         self.chi_prev = xs[2];
+
         xs_dot[0] = xs[3] * f64::cos(xs[2]);
         xs_dot[1] = xs[3] * f64::sin(xs[2]);
-        xs_dot[2] = chi_diff / self.params.T_chi;
-        xs_dot[3] = (U_d - xs[3]) / self.params.T_U;
+        xs_dot[2] = tau[0];
+        xs_dot[3] = tau[1];
+        // xs_dot[2] = chi_diff / self.params.T_chi;
+        // xs_dot[3] = (U_d - xs[3]) / self.params.T_U;
         xs_dot
     }
 

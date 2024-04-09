@@ -1,7 +1,7 @@
 //! # Steering
 //! Implements a simple way of steering a Ship from a startpoint to an endpoint, using a simple surge and heading controller for a 3DOF surface ship model as in Tengesdal et. al. 2021, with LOS guidance.
 //!
-use crate::model::{KinematicCSOG, ShipModel, Telemetron, TelemetronParams};
+use crate::model::{KinematicCSOG, KinematicCSOGParams, ShipModel, Telemetron, TelemetronParams};
 use crate::utils;
 use dubins_paths::{DubinsPath, PosRot};
 use nalgebra::Vector6;
@@ -35,6 +35,7 @@ pub struct LOSGuidanceParams {
     K_p: f64,
     K_i: f64,
     max_cross_track_error_int: f64,
+    cross_track_error_int_threshold: f64,
 }
 
 impl LOSGuidanceParams {
@@ -42,7 +43,8 @@ impl LOSGuidanceParams {
         Self {
             K_p: 0.035,
             K_i: 0.0,
-            max_cross_track_error_int: 30.0,
+            max_cross_track_error_int: 200.0,
+            cross_track_error_int_threshold: 30.0,
         }
     }
 }
@@ -79,12 +81,19 @@ impl LOSGuidance {
         let cross_track_error = -(xs_now[0] - xs_goal[0]) * f64::sin(alpha)
             + (xs_now[1] - xs_goal[1]) * f64::cos(alpha);
 
-        if cross_track_error.abs() <= self.cross_track_error_int {
+        if cross_track_error.abs() <= self.params.cross_track_error_int_threshold {
             self.cross_track_error_int += cross_track_error * dt;
         }
-        if self.cross_track_error_int.abs() > self.cross_track_error_int {
-            self.cross_track_error_int -= cross_track_error * dt;
+
+        if self.cross_track_error_int.abs() < 0.5 {
+            self.cross_track_error_int = 0.0;
         }
+
+        self.cross_track_error_int = utils::saturate(
+            self.cross_track_error_int,
+            -self.params.max_cross_track_error_int,
+            self.params.max_cross_track_error_int,
+        );
 
         let chi_r = (-self.params.K_p * cross_track_error
             - self.params.K_i * self.cross_track_error_int)
@@ -95,15 +104,115 @@ impl LOSGuidance {
 }
 
 #[allow(non_snake_case)]
+pub struct KinematicController {
+    K_p_chi: f64,
+    K_i_chi: f64,
+    K_p_U: f64,
+    K_i_U: f64,
+    a_max: f64,
+    r_max: f64,
+    speed_error_int: f64,
+    max_speed_error_int: f64,
+    speed_error_int_threshold: f64,
+    chi_error_int: f64,
+    chi_error_int_threshold: f64,
+    max_chi_error_int: f64,
+    chi_prev: f64,
+    chi_d_prev: f64,
+}
+
+#[allow(non_snake_case)]
+impl KinematicController {
+    pub fn new() -> Self {
+        let r_max = 8.0 * f64::consts::PI / 180.0;
+        Self {
+            K_p_chi: 0.1,
+            K_i_chi: 0.001,
+            K_p_U: 0.7,
+            K_i_U: 0.005,
+            a_max: 0.3,
+            r_max: r_max,
+            speed_error_int: 0.0,
+            max_speed_error_int: 0.75,
+            speed_error_int_threshold: 0.2,
+            chi_error_int: 0.0,
+            chi_error_int_threshold: 10.0 * f64::consts::PI / 180.0,
+            max_chi_error_int: 30.0 * f64::consts::PI / 180.0,
+            chi_prev: 0.0,
+            chi_d_prev: 0.0,
+        }
+    }
+
+    fn reset(&mut self) {
+        self.speed_error_int = 0.0;
+        self.chi_error_int = 0.0;
+        self.chi_prev = 0.0;
+        self.chi_d_prev = 0.0;
+    }
+
+    fn compute_inputs(
+        &mut self,
+        refs: &(f64, f64),
+        xs: &Vector6<f64>,
+        dt: f64,
+        model_params: &KinematicCSOGParams,
+    ) -> Vector3<f64> {
+        let chi_d: f64 = refs.0;
+        let U_d: f64 = refs.1;
+        let chi: f64 = xs[2];
+        let chi_unwrapped = utils::unwrap_angle(self.chi_prev, chi);
+        let chi_d_unwrapped = utils::unwrap_angle(self.chi_d_prev, chi_d);
+        let chi_error: f64 = utils::wrap_angle_diff_to_pmpi(chi_d_unwrapped, chi_unwrapped);
+
+        if chi_error.abs() <= self.chi_error_int_threshold {
+            self.chi_error_int = utils::unwrap_angle(self.chi_error_int, chi_error * dt);
+        }
+
+        self.chi_error_int = utils::saturate(
+            self.chi_error_int,
+            -self.max_chi_error_int,
+            self.max_chi_error_int,
+        );
+
+        let U: f64 = xs[3];
+        let speed_error: f64 = U_d - U;
+        if self.speed_error_int.abs() <= self.speed_error_int_threshold {
+            self.speed_error_int += speed_error * dt;
+        }
+
+        self.speed_error_int = utils::saturate(
+            self.speed_error_int,
+            -self.max_speed_error_int,
+            self.max_speed_error_int,
+        );
+
+        if speed_error < 0.1 {
+            self.speed_error_int = 0.0;
+        }
+
+        let a: f64 = self.K_p_U * speed_error + self.K_i_U * self.speed_error_int;
+        let a = utils::saturate(a, -self.a_max, self.a_max);
+        let r: f64 = self.K_p_chi * chi_error + self.K_i_chi * self.chi_error_int;
+        let r = utils::saturate(r, -self.r_max, self.r_max);
+        let tau: Vector3<f64> = Vector3::new(r, a, 0.0);
+        // println!(
+        //     "r: {:.4} | a: {:.4} | chi_error: {:.4} | U_diff: {:.4} | chi_d | {:.4} | chi: {:.4} | U_d: {:.4} | U: {:.4}",
+        //     r, a, chi_error, speed_error, chi_d, chi, U_d, U
+        // );
+        tau
+    }
+}
+
+#[allow(non_snake_case)]
 pub struct FLSHController {
     K_p_u: f64,
     K_i_u: f64,
     K_p_psi: f64,
     K_d_psi: f64,
     K_i_psi: f64,
-    max_U_error_int: f64,
-    U_error_int: f64,
-    U_error_int_threshold: f64,
+    max_speed_error_int: f64,
+    speed_error_int: f64,
+    speed_error_int_threshold: f64,
     max_psi_error_int: f64,
     psi_error_int_threshold: f64,
     psi_error_int: f64,
@@ -120,9 +229,9 @@ impl FLSHController {
             K_p_psi: 3.0,
             K_d_psi: 3.0,
             K_i_psi: 0.005,
-            max_U_error_int: 0.75,
-            U_error_int: 0.0,
-            U_error_int_threshold: 0.2,
+            max_speed_error_int: 0.75,
+            speed_error_int: 0.0,
+            speed_error_int_threshold: 0.2,
             max_psi_error_int: 20.0 * f64::consts::PI / 180.0,
             psi_error_int_threshold: 10.0 * f64::consts::PI / 180.0,
             psi_error_int: 0.0,
@@ -132,7 +241,7 @@ impl FLSHController {
     }
 
     fn reset(&mut self) {
-        self.U_error_int = 0.0;
+        self.speed_error_int = 0.0;
         self.psi_error_int = 0.0;
         self.psi_d_prev = 0.0;
         self.psi_prev = 0.0;
@@ -163,12 +272,12 @@ impl FLSHController {
 
         let U: f64 = f64::sqrt(xs[3].powi(2) + xs[4].powi(2));
         let U_d: f64 = refs.1;
-        let U_error: f64 = U_d - U;
-        if self.U_error_int.abs() > self.max_U_error_int {
-            self.U_error_int -= U_error * dt;
+        let speed_error: f64 = U_d - U;
+        if self.speed_error_int.abs() > self.max_speed_error_int {
+            self.speed_error_int -= speed_error * dt;
         }
-        if U_error.abs() <= self.U_error_int_threshold {
-            self.U_error_int += U_error * dt;
+        if speed_error.abs() <= self.speed_error_int_threshold {
+            self.speed_error_int += speed_error * dt;
         }
 
         let r: f64 = xs[5];
@@ -179,7 +288,8 @@ impl FLSHController {
             utils::Dmtrx(model_params.D_l, model_params.D_q, model_params.D_c, nu) * nu;
         let Fx: f64 = Cvv[0]
             + Dvv[0]
-            + model_params.M[(0, 0)] * (self.K_p_u * U_error + self.K_i_u * self.U_error_int);
+            + model_params.M[(0, 0)]
+                * (self.K_p_u * speed_error + self.K_i_u * self.speed_error_int);
         let Fx = utils::saturate(Fx, model_params.Fx_limits[0], model_params.Fx_limits[1]);
         let Fy: f64 = -(model_params.M[(2, 2)] / model_params.l_r)
             * (self.K_p_psi * psi_error - self.K_d_psi * r + self.K_i_psi * self.psi_error_int);
@@ -201,6 +311,7 @@ pub struct LOSSteering<M: ShipModel> {
     pub los_guidance: LOSGuidance,
     pub flsh_controller: FLSHController,
     pub ship_model: M,
+    pub kinematic_controller: KinematicController,
 }
 
 impl<M: ShipModel> LOSSteering<M> {
@@ -212,6 +323,7 @@ impl<M: ShipModel> LOSSteering<M> {
             los_guidance: LOSGuidance::new(los_params),
             flsh_controller: FLSHController::new(),
             ship_model: M::new(model_params),
+            kinematic_controller: KinematicController::new(),
         }
     }
 }
@@ -324,6 +436,7 @@ impl LOSSteering<KinematicCSOG> {
         let mut wp_idx = 0;
         self.los_guidance.reset();
         self.ship_model.reset();
+        self.kinematic_controller.reset();
         let mut time = 0.0;
         while wp_idx < n_wps - 1 {
             let wp_prev = Vector6::new(
@@ -348,7 +461,14 @@ impl LOSSteering<KinematicCSOG> {
                 self.los_guidance
                     .compute_refs(&xs_current, &wp_prev, &wp, U_d_seg, time_step);
 
-            let tau: Vector3<f64> = Vector3::new(refs.0, refs.1, 0.0);
+            // let tau: Vector3<f64> = Vector3::new(refs.0, refs.1, 0.0);
+            let tau = self.kinematic_controller.compute_inputs(
+                &refs,
+                &xs_current,
+                time_step,
+                &self.ship_model.params(),
+            );
+
             xs_current = self.ship_model.erk4_step(time_step, &xs_current, &tau);
 
             refs_array.push(refs);
@@ -463,12 +583,20 @@ impl Steering for LOSSteering<KinematicCSOG> {
         let mut xs_next = xs_start.clone();
         let mut reached_goal = false;
         self.ship_model.reset();
+        self.los_guidance.reset();
+        self.kinematic_controller.reset();
         while time <= max_steering_time {
             let refs: (f64, f64) = self
                 .los_guidance
                 .compute_refs(&xs_next, xs_start, xs_goal, U_d, time_step);
 
-            let tau: Vector3<f64> = Vector3::new(refs.0, refs.1, 0.0);
+            // let tau: Vector3<f64> = Vector3::new(refs.0, refs.1, 0.0);
+            let tau = self.kinematic_controller.compute_inputs(
+                &refs,
+                &xs_next,
+                time_step,
+                &self.ship_model.params(),
+            );
             xs_next = self.ship_model.erk4_step(time_step, &xs_next, &tau);
 
             refs_array.push(refs);
@@ -483,6 +611,13 @@ impl Steering for LOSSteering<KinematicCSOG> {
                 Vector2::new(xs_goal[0] - xs_start[0], xs_goal[1] - xs_start[1]).normalize();
             let segment_passed =
                 L_wp_seg.dot(&dist2goal_vec.normalize()) < f64::cos(utils::deg2rad(90.0));
+
+            // println!(
+            //     "d2goal: {:.2} | L.dot(d2goal): {:.2} | segment_passed: {:?}",
+            //     dist2goal,
+            //     utils::rad2deg(L_wp_seg.dot(&dist2goal_vec.normalize())),
+            //     segment_passed
+            // );
             if dist2goal <= acceptance_radius {
                 reached_goal = true;
                 break;
@@ -636,12 +771,12 @@ mod tests {
     #[test]
     pub fn test_steer() -> Result<(), Box<dyn std::error::Error>> {
         let mut steering =
-            LOSSteering::<Telemetron>::new(LOSGuidanceParams::new(), TelemetronParams::new());
-        let xs_start = Vector6::new(0.0, 0.0, consts::PI / 2.0, 5.0, 0.0, 0.0);
+            LOSSteering::<KinematicCSOG>::new(LOSGuidanceParams::new(), KinematicCSOGParams::new());
+        let xs_start = Vector6::new(0.0, 0.0, consts::PI / 2.0, 3.0, 0.0, 0.0);
         let acceptance_radius = 10.0;
         let xs_goal = Vector6::new(100.0, 0.0, 0.0, 0.0, 0.0, 0.0);
         let (xs_array, u_array, refs_array, t_array, _) =
-            steering.steer(&xs_start, &xs_goal, 5.0, acceptance_radius, 0.2, 70.0);
+            steering.steer(&xs_start, &xs_goal, 4.0, acceptance_radius, 5.0, 70.0);
         println!("time: {:?}", t_array.last().unwrap().clone());
         assert!(xs_array.len() > 0);
         assert!(u_array.len() > 0);
