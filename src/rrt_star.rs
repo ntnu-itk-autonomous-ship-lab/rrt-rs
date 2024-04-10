@@ -262,7 +262,7 @@ impl RRTStar {
         }
         let mut z_new = self.get_root_node();
         self.num_iter = 0;
-        let goal_attempt_steering_time = 10.0 * 60.0;
+        let goal_attempt_steering_time = 5.0 * self.params.max_steering_time;
         while self.num_nodes < self.params.max_nodes && self.num_iter < self.params.max_iter {
             let success = self.attempt_direct_goal_growth(goal_attempt_steering_time)?;
             if success && return_on_first_solution {
@@ -502,13 +502,15 @@ impl RRTStar {
     }
 
     pub fn attempt_direct_goal_growth(&mut self, max_steering_time: f64) -> PyResult<bool> {
-        if self.num_iter % self.params.iter_between_direct_goal_growth != 0
-            || !self.solutions.is_empty()
-        {
+        if self.num_iter % self.params.iter_between_direct_goal_growth != 0 {
             return Ok(false);
         }
         let z_goal = RRTNode::new(self.xs_goal.clone(), Vec::new(), Vec::new(), 0.0, 0.0, 0.0);
         let z_nearest = self.nearest(&z_goal)?;
+        println!(
+            "Attempting direct goal growth from z_nearest: {:?}",
+            z_nearest.state
+        );
         self.attempt_goal_insertion(&z_nearest, max_steering_time)
     }
 

@@ -126,18 +126,18 @@ impl KinematicController {
     pub fn new() -> Self {
         let r_max = 8.0 * f64::consts::PI / 180.0;
         Self {
-            K_p_chi: 0.1,
+            K_p_chi: 0.08,
             K_i_chi: 0.001,
-            K_p_U: 0.7,
-            K_i_U: 0.005,
-            a_max: 0.3,
+            K_p_U: 0.8,
+            K_i_U: 0.001,
+            a_max: 0.2,
             r_max: r_max,
             speed_error_int: 0.0,
-            max_speed_error_int: 0.75,
+            max_speed_error_int: 2.0,
             speed_error_int_threshold: 0.2,
             chi_error_int: 0.0,
             chi_error_int_threshold: 10.0 * f64::consts::PI / 180.0,
-            max_chi_error_int: 30.0 * f64::consts::PI / 180.0,
+            max_chi_error_int: 50.0 * f64::consts::PI / 180.0,
             chi_prev: 0.0,
             chi_d_prev: 0.0,
         }
@@ -168,6 +168,10 @@ impl KinematicController {
             self.chi_error_int = utils::unwrap_angle(self.chi_error_int, chi_error * dt);
         }
 
+        if chi_error.abs() < 1.0 * f64::consts::PI / 180.0 {
+            self.chi_error_int = 0.0;
+        }
+
         self.chi_error_int = utils::saturate(
             self.chi_error_int,
             -self.max_chi_error_int,
@@ -186,7 +190,7 @@ impl KinematicController {
             self.max_speed_error_int,
         );
 
-        if speed_error < 0.1 {
+        if speed_error.abs() < 0.1 {
             self.speed_error_int = 0.0;
         }
 
@@ -197,7 +201,7 @@ impl KinematicController {
         let tau: Vector3<f64> = Vector3::new(r, a, 0.0);
         // println!(
         //     "r: {:.4} | a: {:.4} | chi_error: {:.4} | U_diff: {:.4} | chi_d | {:.4} | chi: {:.4} | U_d: {:.4} | U: {:.4}",
-        //     r, a, chi_error, speed_error, chi_d, chi, U_d, U
+        //     r, a, 180.0 * chi_error / f64::consts::PI, speed_error, 180.0 * chi_d / f64::consts::PI, 180.0 * chi / f64::consts::PI, U_d, U
         // );
         tau
     }
@@ -389,7 +393,6 @@ impl LOSSteering<Telemetron> {
             refs_array.push(refs);
             u_array.push(tau);
             time += time_step;
-
             t_array.push(time.clone());
             xs_array.push(xs_current);
             // Break if inside final waypoint acceptance radius
@@ -457,11 +460,16 @@ impl LOSSteering<KinematicCSOG> {
             );
             let U_d_seg = waypoints[wp_idx + 1][2];
 
-            let refs: (f64, f64) =
+            let mut refs: (f64, f64) =
                 self.los_guidance
                     .compute_refs(&xs_current, &wp_prev, &wp, U_d_seg, time_step);
 
             // let tau: Vector3<f64> = Vector3::new(refs.0, refs.1, 0.0);
+            let dist2wp =
+                ((wp[0] - xs_current[0]).powi(2) + (wp[1] - xs_current[1]).powi(2)).sqrt();
+            if dist2wp < refs.1 * 5.0 && wp_idx == n_wps - 2 {
+                refs.1 = 0.0;
+            }
             let tau = self.kinematic_controller.compute_inputs(
                 &refs,
                 &xs_current,
@@ -481,6 +489,16 @@ impl LOSSteering<KinematicCSOG> {
             let dist2wp = dist2wp_vec.norm();
             let segment_passed =
                 L_wp_seg.dot(&dist2wp_vec.normalize()) < f64::cos(utils::deg2rad(90.0));
+
+            // println!(
+            //     "chi_diff: {:.2} | U_diff: {:.2} | d2wp: {:.2} | L.dot(d2wp): {:.2} | segment_passed: {:?}",
+            //     utils::rad2deg(utils::wrap_angle_diff_to_pmpi(refs.0, xs_current[2])),
+            //     refs.1 - xs_current[3],
+            //     dist2wp,
+            //     utils::rad2deg(L_wp_seg.dot(&dist2wp_vec.normalize())),
+            //     segment_passed
+            // );
+
             if (dist2wp <= acceptance_radius) || segment_passed {
                 wp_idx += 1;
             }
