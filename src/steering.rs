@@ -240,9 +240,8 @@ impl LOSSteering<Telemetron> {
         Vec<f64>,
         bool,
     ) {
-        let radius = acceptance_radius;
-        let mut t_array: Vec<f64> = Vec::new();
-        let mut xs_array: Vec<Vector6<f64>> = Vec::new();
+        let mut t_array: Vec<f64> = vec![0.0];
+        let mut xs_array: Vec<Vector6<f64>> = vec![xs_start.clone()];
         let mut u_array: Vec<Vector3<f64>> = Vec::new();
         let mut refs_array: Vec<(f64, f64)> = Vec::new();
         let mut reached_last = false;
@@ -286,9 +285,9 @@ impl LOSSteering<Telemetron> {
 
             refs_array.push(refs);
             u_array.push(tau);
-            t_array.push(time.clone());
             time += time_step;
 
+            t_array.push(time.clone());
             xs_array.push(xs_current);
             // Break if inside final waypoint acceptance radius
             let dist2wp_vec = Vector2::new(wp[0] - xs_current[0], wp[1] - xs_current[1]);
@@ -303,7 +302,7 @@ impl LOSSteering<Telemetron> {
         let dist2last_wp = ((waypoints.last().unwrap()[0] - xs_array.last().unwrap()[0]).powi(2)
             + (waypoints.last().unwrap()[1] - xs_array.last().unwrap()[1]).powi(2))
         .sqrt();
-        reached_last = dist2last_wp <= radius;
+        reached_last = dist2last_wp <= acceptance_radius;
         // println!(
         //     "acceptance_radius: {:.2} | d2last_wp: {:.2} | reached_last: {:?}",
         //     radius, dist2last_wp, reached_last
@@ -327,8 +326,8 @@ impl LOSSteering<KinematicCSOG> {
         Vec<f64>,
         bool,
     ) {
-        let mut t_array: Vec<f64> = Vec::new();
-        let mut xs_array: Vec<Vector6<f64>> = Vec::new();
+        let mut t_array: Vec<f64> = vec![0.0];
+        let mut xs_array: Vec<Vector6<f64>> = vec![xs_start.clone()];
         let mut u_array: Vec<Vector3<f64>> = Vec::new();
         let mut refs_array: Vec<(f64, f64)> = Vec::new();
         let mut reached_last = false;
@@ -367,9 +366,8 @@ impl LOSSteering<KinematicCSOG> {
 
             refs_array.push(refs);
             u_array.push(tau);
-            t_array.push(time.clone());
             time += time_step;
-
+            t_array.push(time.clone());
             xs_array.push(xs_current);
             let dist2wp_vec = Vector2::new(wp[0] - xs_current[0], wp[1] - xs_current[1]);
             let L_wp_seg = Vector2::new(wp[0] - wp_prev[0], wp[1] - wp_prev[1]).normalize();
@@ -497,7 +495,7 @@ impl Steering for LOSSteering<KinematicCSOG> {
         bool,
     ) {
         let mut time = 0.0;
-        let mut t_array = vec![];
+        let mut t_array = vec![0.0];
         let mut xs_array: Vec<Vector6<f64>> = vec![xs_start.clone()];
         let mut u_array: Vec<Vector3<f64>> = vec![];
         let mut refs_array: Vec<(f64, f64)> = vec![];
@@ -515,9 +513,8 @@ impl Steering for LOSSteering<KinematicCSOG> {
 
             refs_array.push(refs);
             u_array.push(tau);
-            t_array.push(time.clone());
             time += time_step;
-
+            t_array.push(time.clone());
             xs_array.push(xs_next);
             // Break if inside final waypoint acceptance radius
             let dist2goal_vec = Vector2::new(xs_goal[0] - xs_next[0], xs_goal[1] - xs_next[1]);
