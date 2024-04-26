@@ -254,14 +254,14 @@ impl RRT {
         }
         let mut z_new = self.get_root_node();
         self.num_iter = 0;
-        let goal_attempt_steering_time = 10.0 * 60.0;
+        let goal_attempt_steering_time = 5.0 * 60.0;
         while self.num_nodes < self.params.max_nodes && self.num_iter < self.params.max_iter {
             let success = self.attempt_direct_goal_growth(goal_attempt_steering_time)?;
             if success && return_on_first_solution {
                 break;
             }
 
-            let success = self.attempt_goal_insertion(&z_new, self.params.max_steering_time)?;
+            let success = self.attempt_goal_insertion(&z_new, goal_attempt_steering_time)?;
             if success && return_on_first_solution {
                 break;
             }
@@ -480,13 +480,15 @@ impl RRT {
     }
 
     pub fn attempt_direct_goal_growth(&mut self, max_steering_time: f64) -> PyResult<bool> {
-        if self.num_iter % self.params.iter_between_direct_goal_growth != 0
-            || !self.solutions.is_empty()
-        {
+        if self.num_iter % self.params.iter_between_direct_goal_growth != 0 {
             return Ok(false);
         }
         let z_goal = RRTNode::new(self.xs_goal.clone(), Vec::new(), Vec::new(), 0.0, 0.0, 0.0);
         let z_nearest = self.nearest(&z_goal)?;
+        // println!(
+        //     "Attempting direct goal growth from z_nearest: {:?}",
+        //     z_nearest.state
+        // );
         self.attempt_goal_insertion(&z_nearest, max_steering_time)
     }
 
@@ -498,10 +500,15 @@ impl RRT {
         if !self.goal_reachable(&z) {
             return Ok(false);
         }
-        if self.reached_goal(&z) && self.num_iter > 0 {
+        let z_parent = self
+            .bookkeeping_tree
+            .get(&z.id.clone().unwrap())
+            .unwrap()
+            .parent();
+        if self.reached_goal(&z) && self.num_iter > 0 && z_parent.is_some() {
             let z_parent = self
                 .bookkeeping_tree
-                .get(&z.clone().id.unwrap())
+                .get(&z_parent.unwrap())
                 .unwrap()
                 .data()
                 .clone();
@@ -517,6 +524,16 @@ impl RRT {
             self.params.steering_acceptance_radius,
         )?;
         let x_new: Vector6<f64> = xs_array.last().copied().unwrap();
+        let d2goal = (x_new.select_rows(&[0, 1]) - self.xs_goal.select_rows(&[0, 1])).norm();
+        // println!(
+        //     "t_new: {} | reached: {} | xs_array length: {} | collision_free: {} | d2goal: {} | max_steering_time: {}",
+        //     t_new,
+        //     reached,
+        //     xs_array.len(),
+        //     self.is_collision_free(&xs_array),
+        //     d2goal,
+        //     max_steering_time
+        // );
 
         if !(self.is_collision_free(&xs_array) && t_new > self.params.min_steering_time && reached)
         {
