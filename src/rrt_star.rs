@@ -530,10 +530,15 @@ impl RRTStar {
         if !self.goal_reachable(&z) {
             return Ok(false);
         }
-        if self.reached_goal(&z) && self.num_iter > 0 {
+        let z_parent = self
+            .bookkeeping_tree
+            .get(&z.id.clone().unwrap())
+            .unwrap()
+            .parent();
+        if self.reached_goal(&z) && self.num_iter > 0 && z_parent.is_some() {
             let z_parent = self
                 .bookkeeping_tree
-                .get(&z.clone().id.unwrap())
+                .get(&z_parent.unwrap())
                 .unwrap()
                 .data()
                 .clone();
