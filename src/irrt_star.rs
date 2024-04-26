@@ -605,7 +605,7 @@ impl IRRTStar {
                 &z_new.clone(),
                 &z_near.clone(),
                 10.0 * self.params.max_steering_time,
-                5.0,
+                0.5,
             )?;
             let xs_new_near: Vector6<f64> = xs_array.last().copied().unwrap();
             if utils::rad2deg(utils::wrap_angle_diff_to_pmpi(xs_new_near[2], z_near.state[2]).abs())

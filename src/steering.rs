@@ -98,8 +98,8 @@ impl LOSGuidance {
         let chi_r = (-self.params.K_p * cross_track_error
             - self.params.K_i * self.cross_track_error_int)
             .atan2(1.0);
-        let psi_d = utils::wrap_angle_to_pmpi(alpha + chi_r);
-        (psi_d, U_d)
+        let chi_d = utils::wrap_angle_to_pmpi(alpha + chi_r);
+        (chi_d, U_d)
     }
 }
 
@@ -128,12 +128,12 @@ impl KinematicController {
         Self {
             K_p_chi: 0.08,
             K_i_chi: 0.001,
-            K_p_U: 0.8,
+            K_p_U: 0.08,
             K_i_U: 0.001,
             a_max: 0.2,
             r_max: r_max,
             speed_error_int: 0.0,
-            max_speed_error_int: 2.0,
+            max_speed_error_int: 5.0,
             speed_error_int_threshold: 0.2,
             chi_error_int: 0.0,
             chi_error_int_threshold: 10.0 * f64::consts::PI / 180.0,
@@ -208,47 +208,47 @@ impl KinematicController {
 }
 
 #[allow(non_snake_case)]
-pub struct FLSHController {
+pub struct FLSCController {
     K_p_u: f64,
     K_i_u: f64,
-    K_p_psi: f64,
-    K_d_psi: f64,
-    K_i_psi: f64,
+    K_p_chi: f64,
+    K_d_chi: f64,
+    K_i_chi: f64,
     max_speed_error_int: f64,
     speed_error_int: f64,
     speed_error_int_threshold: f64,
-    max_psi_error_int: f64,
-    psi_error_int_threshold: f64,
-    psi_error_int: f64,
-    psi_d_prev: f64,
-    psi_prev: f64,
+    max_chi_error_int: f64,
+    chi_error_int_threshold: f64,
+    chi_error_int: f64,
+    chi_d_prev: f64,
+    chi_prev: f64,
 }
 
 #[allow(non_snake_case)]
-impl FLSHController {
+impl FLSCController {
     pub fn new() -> Self {
         Self {
             K_p_u: 1.0,
             K_i_u: 0.05,
-            K_p_psi: 3.0,
-            K_d_psi: 3.0,
-            K_i_psi: 0.005,
+            K_p_chi: 3.0,
+            K_d_chi: 3.0,
+            K_i_chi: 0.005,
             max_speed_error_int: 0.75,
             speed_error_int: 0.0,
             speed_error_int_threshold: 0.2,
-            max_psi_error_int: 20.0 * f64::consts::PI / 180.0,
-            psi_error_int_threshold: 10.0 * f64::consts::PI / 180.0,
-            psi_error_int: 0.0,
-            psi_d_prev: 0.0,
-            psi_prev: 0.0,
+            max_chi_error_int: 20.0 * f64::consts::PI / 180.0,
+            chi_error_int_threshold: 10.0 * f64::consts::PI / 180.0,
+            chi_error_int: 0.0,
+            chi_d_prev: 0.0,
+            chi_prev: 0.0,
         }
     }
 
     fn reset(&mut self) {
         self.speed_error_int = 0.0;
-        self.psi_error_int = 0.0;
-        self.psi_d_prev = 0.0;
-        self.psi_prev = 0.0;
+        self.chi_error_int = 0.0;
+        self.chi_d_prev = 0.0;
+        self.chi_prev = 0.0;
     }
 
     fn compute_inputs(
@@ -258,21 +258,24 @@ impl FLSHController {
         dt: f64,
         model_params: &TelemetronParams,
     ) -> Vector3<f64> {
-        let psi: f64 = utils::wrap_angle_to_pmpi(xs[2]);
-        let psi_unwrapped = utils::unwrap_angle(self.psi_prev, psi);
-        let psi_d: f64 = refs.0;
-        let psi_d_unwrapped = utils::unwrap_angle(self.psi_d_prev, psi_d);
-        let psi_error: f64 = utils::wrap_angle_diff_to_pmpi(psi_d_unwrapped, psi_unwrapped);
-        self.psi_prev = psi;
-        self.psi_d_prev = psi_d;
-        if self.psi_error_int.abs() > self.max_psi_error_int {
-            self.psi_error_int -= psi_error * dt;
+        let chi: f64 = utils::wrap_angle_to_pmpi(xs[2]);
+        let chi_unwrapped = utils::unwrap_angle(self.chi_prev, chi);
+        let chi_d: f64 = refs.0;
+        let chi_d_unwrapped = utils::unwrap_angle(self.chi_d_prev, chi_d);
+        let chi_error: f64 = utils::wrap_angle_diff_to_pmpi(chi_d_unwrapped, chi_unwrapped);
+        // if (chi_d < 0.0 && chi > 0.0) || (chi_d > 0.0 && chi < 0.0) {
+        //     println!("chi_d={chi_d} | chi_d_unwrapped={chi_d_unwrapped} | chi={chi} | chi_unwrapped={chi_unwrapped} | chi_error={chi_error}");
+        // }
+        self.chi_prev = chi;
+        self.chi_d_prev = chi_d;
+        if self.chi_error_int.abs() > self.max_chi_error_int {
+            self.chi_error_int -= chi_error * dt;
         }
-        if psi_error.abs() <= self.psi_error_int_threshold {
-            self.psi_error_int += psi_error * dt;
+        if chi_error.abs() <= self.chi_error_int_threshold {
+            self.chi_error_int += chi_error * dt;
         }
 
-        self.psi_error_int = utils::wrap_angle_to_pmpi(self.psi_error_int);
+        self.chi_error_int = utils::wrap_angle_to_pmpi(self.chi_error_int);
 
         let U: f64 = f64::sqrt(xs[3].powi(2) + xs[4].powi(2));
         let U_d: f64 = refs.1;
@@ -296,7 +299,7 @@ impl FLSHController {
                 * (self.K_p_u * speed_error + self.K_i_u * self.speed_error_int);
         let Fx = utils::saturate(Fx, model_params.Fx_limits[0], model_params.Fx_limits[1]);
         let Fy: f64 = -(model_params.M[(2, 2)] / model_params.l_r)
-            * (self.K_p_psi * psi_error - self.K_d_psi * r + self.K_i_psi * self.psi_error_int);
+            * (self.K_p_chi * chi_error - self.K_d_chi * r + self.K_i_chi * self.chi_error_int);
         let Fy = utils::saturate(Fy, model_params.Fy_limits[0], model_params.Fy_limits[1]);
         let mut tau: Vector3<f64> = Vector3::new(Fx, Fy, -Fy * model_params.l_r);
         tau[0] = utils::saturate(tau[0], model_params.Fx_limits[0], model_params.Fx_limits[1]);
@@ -313,7 +316,7 @@ impl FLSHController {
 
 pub struct LOSSteering<M: ShipModel> {
     pub los_guidance: LOSGuidance,
-    pub flsh_controller: FLSHController,
+    pub flsc_controller: FLSCController,
     pub ship_model: M,
     pub kinematic_controller: KinematicController,
 }
@@ -325,7 +328,7 @@ impl<M: ShipModel> LOSSteering<M> {
     ) -> LOSSteering<M> {
         Self {
             los_guidance: LOSGuidance::new(los_params),
-            flsh_controller: FLSHController::new(),
+            flsc_controller: FLSCController::new(),
             ship_model: M::new(model_params),
             kinematic_controller: KinematicController::new(),
         }
@@ -357,7 +360,7 @@ impl LOSSteering<Telemetron> {
         let mut xs_current = xs_start.clone();
         let mut wp_idx = 0;
         self.los_guidance.reset();
-        self.flsh_controller.reset();
+        self.flsc_controller.reset();
         let mut time = 0.0;
         while wp_idx < n_wps - 1 {
             let wp_prev = Vector6::new(
@@ -378,11 +381,18 @@ impl LOSSteering<Telemetron> {
             );
             let U_d_seg = waypoints[wp_idx + 1][2];
 
-            let refs: (f64, f64) =
+            let mut refs: (f64, f64) =
                 self.los_guidance
                     .compute_refs(&xs_current, &wp_prev, &wp, U_d_seg, time_step);
 
-            let tau: Vector3<f64> = self.flsh_controller.compute_inputs(
+            let dist2wp =
+                ((wp[0] - xs_current[0]).powi(2) + (wp[1] - xs_current[1]).powi(2)).sqrt();
+            let braking_threshold_dist = f64::max(30.0, 3.0 * acceptance_radius);
+            if dist2wp < braking_threshold_dist && wp_idx == n_wps - 2 {
+                refs.1 = 0.5;
+            }
+
+            let tau: Vector3<f64> = self.flsc_controller.compute_inputs(
                 &refs,
                 &xs_current,
                 time_step,
@@ -401,7 +411,7 @@ impl LOSSteering<Telemetron> {
             let dist2wp = dist2wp_vec.norm();
             let segment_passed =
                 L_wp_seg.dot(&dist2wp_vec.normalize()) < f64::cos(utils::deg2rad(90.0));
-            if dist2wp <= acceptance_radius || segment_passed {
+            if ((dist2wp <= acceptance_radius) || segment_passed) && wp_idx < n_wps - 1 {
                 wp_idx += 1;
             }
         }
@@ -467,8 +477,9 @@ impl LOSSteering<KinematicCSOG> {
             // let tau: Vector3<f64> = Vector3::new(refs.0, refs.1, 0.0);
             let dist2wp =
                 ((wp[0] - xs_current[0]).powi(2) + (wp[1] - xs_current[1]).powi(2)).sqrt();
-            if dist2wp < refs.1 * 5.0 && wp_idx == n_wps - 2 {
-                refs.1 = 0.0;
+            let braking_threshold_dist = f64::max(30.0, 3.0 * acceptance_radius);
+            if dist2wp < braking_threshold_dist && wp_idx == n_wps - 2 {
+                refs.1 = 0.5;
             }
             let tau = self.kinematic_controller.compute_inputs(
                 &refs,
@@ -499,7 +510,7 @@ impl LOSSteering<KinematicCSOG> {
             //     segment_passed
             // );
 
-            if (dist2wp <= acceptance_radius) || segment_passed {
+            if ((dist2wp <= acceptance_radius) || segment_passed) && wp_idx < n_wps - 1 {
                 wp_idx += 1;
             }
         }
@@ -536,13 +547,14 @@ impl Steering for LOSSteering<Telemetron> {
         let mut xs_next = xs_start.clone();
         let mut reached_goal = false;
         self.los_guidance.reset();
-        self.flsh_controller.reset();
+        self.flsc_controller.reset();
+        //println!("xs_start: {:?} | xs_goal: {:?}", xs_start, xs_goal);
         while time <= max_steering_time {
             let refs: (f64, f64) = self
                 .los_guidance
                 .compute_refs(&xs_next, xs_start, xs_goal, U_d, time_step);
 
-            let tau: Vector3<f64> = self.flsh_controller.compute_inputs(
+            let tau: Vector3<f64> = self.flsc_controller.compute_inputs(
                 &refs,
                 &xs_next,
                 time_step,
@@ -615,6 +627,12 @@ impl Steering for LOSSteering<KinematicCSOG> {
                 time_step,
                 &self.ship_model.params(),
             );
+            // if time == 0.0 {
+            //     println!(
+            //         "steering | xs: {:?}, refs: {:?}, tau: {:?}",
+            //         xs_next, refs, tau
+            //     );
+            // }
             xs_next = self.ship_model.erk4_step(time_step, &xs_next, &tau);
 
             refs_array.push(refs);
@@ -790,11 +808,12 @@ mod tests {
     pub fn test_steer() -> Result<(), Box<dyn std::error::Error>> {
         let mut steering =
             LOSSteering::<KinematicCSOG>::new(LOSGuidanceParams::new(), KinematicCSOGParams::new());
-        let xs_start = Vector6::new(0.0, 0.0, consts::PI / 2.0, 3.0, 0.0, 0.0);
+        let start_course = 0.0; // consts::PI / 2.0;
+        let xs_start = Vector6::new(0.0, 0.0, 0.0, 3.0, 0.0, 0.0);
         let acceptance_radius = 10.0;
-        let xs_goal = Vector6::new(100.0, 0.0, 0.0, 0.0, 0.0, 0.0);
+        let xs_goal = Vector6::new(200.0, 0.0, 0.0, 0.0, 0.0, 0.0);
         let (xs_array, u_array, refs_array, t_array, _) =
-            steering.steer(&xs_start, &xs_goal, 4.0, acceptance_radius, 5.0, 70.0);
+            steering.steer(&xs_start, &xs_goal, 7.0, acceptance_radius, 5.0, 70.0);
         println!("time: {:?}", t_array.last().unwrap().clone());
         assert!(xs_array.len() > 0);
         assert!(u_array.len() > 0);
