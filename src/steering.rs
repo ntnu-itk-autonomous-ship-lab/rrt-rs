@@ -126,9 +126,9 @@ impl KinematicController {
     pub fn new() -> Self {
         let r_max = 8.0 * f64::consts::PI / 180.0;
         Self {
-            K_p_chi: 0.08,
-            K_i_chi: 0.001,
-            K_p_U: 0.08,
+            K_p_chi: 0.2,
+            K_i_chi: 0.01,
+            K_p_U: 0.04,
             K_i_U: 0.001,
             a_max: 0.2,
             r_max: r_max,
@@ -136,8 +136,8 @@ impl KinematicController {
             max_speed_error_int: 5.0,
             speed_error_int_threshold: 0.2,
             chi_error_int: 0.0,
-            chi_error_int_threshold: 10.0 * f64::consts::PI / 180.0,
-            max_chi_error_int: 50.0 * f64::consts::PI / 180.0,
+            chi_error_int_threshold: 15.0 * f64::consts::PI / 180.0,
+            max_chi_error_int: 90.0 * f64::consts::PI / 180.0,
             chi_prev: 0.0,
             chi_d_prev: 0.0,
         }
@@ -201,7 +201,7 @@ impl KinematicController {
         let tau: Vector3<f64> = Vector3::new(r, a, 0.0);
         // println!(
         //     "r: {:.4} | a: {:.4} | chi_error: {:.4} | U_diff: {:.4} | chi_d | {:.4} | chi: {:.4} | U_d: {:.4} | U: {:.4}",
-        //     r, a, 180.0 * chi_error / f64::consts::PI, speed_error, 180.0 * chi_d / f64::consts::PI, 180.0 * chi / f64::consts::PI, U_d, U
+        //     r, a, 180.0 * chi_error / f64::consts::PI, speed_error, 180.0 * chi_d_unwrapped / f64::consts::PI, 180.0 * chi_unwrapped / f64::consts::PI, U_d, U
         // );
         tau
     }
@@ -309,7 +309,6 @@ impl FLSCController {
             model_params.Fy_limits[0] * model_params.l_r,
             model_params.Fy_limits[1] * model_params.l_r,
         );
-
         tau
     }
 }
@@ -612,27 +611,31 @@ impl Steering for LOSSteering<KinematicCSOG> {
         let mut refs_array: Vec<(f64, f64)> = vec![];
         let mut xs_next = xs_start.clone();
         let mut reached_goal = false;
+        // println!("xs_start: {:?} | xs_goal: {:?}", xs_start, xs_goal);
         self.ship_model.reset();
         self.los_guidance.reset();
         self.kinematic_controller.reset();
-        while time <= max_steering_time {
-            let refs: (f64, f64) = self
+        let braking_threshold_dist = f64::max(30.0, 3.0 * acceptance_radius);
+        while time < max_steering_time {
+            let mut refs: (f64, f64) = self
                 .los_guidance
                 .compute_refs(&xs_next, xs_start, xs_goal, U_d, time_step);
 
+            let dist2goal_vec = Vector2::new(xs_goal[0] - xs_next[0], xs_goal[1] - xs_next[1]);
+            let dist2goal = dist2goal_vec.norm();
+            if xs_goal[3] < 0.1 && dist2goal < braking_threshold_dist {
+                refs.1 = 0.4;
+            }
             // let tau: Vector3<f64> = Vector3::new(refs.0, refs.1, 0.0);
-            let tau = self.kinematic_controller.compute_inputs(
+            let mut tau = self.kinematic_controller.compute_inputs(
                 &refs,
                 &xs_next,
                 time_step,
                 &self.ship_model.params(),
             );
-            // if time == 0.0 {
-            //     println!(
-            //         "steering | xs: {:?}, refs: {:?}, tau: {:?}",
-            //         xs_next, refs, tau
-            //     );
-            // }
+            if xs_next[3] < 0.2 {
+                tau[1] = 0.0;
+            }
             xs_next = self.ship_model.erk4_step(time_step, &xs_next, &tau);
 
             refs_array.push(refs);
@@ -648,12 +651,21 @@ impl Steering for LOSSteering<KinematicCSOG> {
             let segment_passed =
                 L_wp_seg.dot(&dist2goal_vec.normalize()) < f64::cos(utils::deg2rad(90.0));
 
-            // println!(
-            //     "d2goal: {:.2} | L.dot(d2goal): {:.2} | segment_passed: {:?}",
-            //     dist2goal,
-            //     utils::rad2deg(L_wp_seg.dot(&dist2goal_vec.normalize())),
-            //     segment_passed
-            // );
+            // if xs_goal[3] < 0.1 {
+            //     println!(
+            //         "d2goal: {:.2} | L.dot(d2goal): {:.2} | segment_passed: {:?} | r: {:.4} | a: {:.4} | chi_ref {:.4} | chi: {:.4} | chi_error: {:.4} U_ref: {:.4} | U: {:.4}",
+            //         dist2goal,
+            //         utils::rad2deg(L_wp_seg.dot(&dist2goal_vec.normalize())),
+            //         segment_passed,
+            //         tau[0],
+            //         tau[1],
+            //         refs.0,
+            //         xs_next[2],
+            //         utils::wrap_angle_diff_to_pmpi(refs.0, xs_next[2]),
+            //         refs.1,
+            //         xs_next[3],
+            //     );
+            // }
             if dist2goal <= acceptance_radius {
                 reached_goal = true;
                 break;

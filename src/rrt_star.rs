@@ -269,7 +269,7 @@ impl RRTStar {
                 break;
             }
 
-            let success = self.attempt_goal_insertion(&z_new, self.params.max_steering_time)?;
+            let success = self.attempt_goal_insertion(&z_new, goal_attempt_steering_time)?;
             if success && return_on_first_solution {
                 break;
             }
@@ -554,12 +554,15 @@ impl RRTStar {
             self.params.steering_acceptance_radius,
         )?;
         let x_new: Vector6<f64> = xs_array.last().copied().unwrap();
+        let d2goal = (x_new.select_rows(&[0, 1]) - self.xs_goal.select_rows(&[0, 1])).norm();
         // println!(
-        //     "t_new: {} | reached: {} | xs_array length: {} | collision_free: {}",
+        //     "t_new: {} | reached: {} | xs_array length: {} | collision_free: {} | d2goal: {} | max_steering_time: {}",
         //     t_new,
         //     reached,
         //     xs_array.len(),
-        //     self.is_collision_free(&xs_array)
+        //     self.is_collision_free(&xs_array),
+        //     d2goal,
+        //     max_steering_time
         // );
         if !(self.is_collision_free(&xs_array) && reached) {
             return Ok(false);
@@ -872,7 +875,7 @@ impl RRTStar {
             if !self.enc.inside_hazards(&p_rand) && self.enc.inside_bbox(&p_rand) {
                 return Ok(RRTNode {
                     id: None,
-                    state: Vector6::new(p_rand[0], p_rand[1], 0.0, 0.0, 0.0, 0.0),
+                    state: Vector6::new(p_rand[0], p_rand[1], 0.0, self.U_d, 0.0, 0.0),
                     cost: 0.0,
                     d2land: 0.0,
                     trajectory: Vec::new(),
