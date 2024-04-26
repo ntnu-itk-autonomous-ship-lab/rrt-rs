@@ -163,6 +163,19 @@ impl ENCData {
         linestring.intersects(&self.hazards)
     }
 
+    pub fn intersects_with_linestring_v2(&self, linestring: &Vec<Vector6<f64>>) -> bool {
+        let intersects = linestring
+            .iter()
+            .zip(linestring.iter().skip(1))
+            .any(|(p1, p2)| {
+                self.intersects_with_segment(
+                    &Vector2::new(p1[0], p1[1]),
+                    &Vector2::new(p2[0], p2[1]),
+                )
+            });
+        intersects
+    }
+
     pub fn intersects_with_segment(&self, p1: &Vector2<f64>, p2: &Vector2<f64>) -> bool {
         let line = LineString(vec![coord![x: p1[0], y: p1[1]], coord![x: p2[0], y: p2[1]]]);
         self.intersects_with_linestring(&line)
@@ -180,7 +193,9 @@ impl ENCData {
         } else {
             LineString(xs_array.iter().map(|x| coord! {x: x[0], y: x[1]}).collect())
         };
+        // let intersect2 = self.intersects_with_linestring_v2(&xs_array);
         let intersect = self.intersects_with_linestring(&traj_linestring);
+        // println!("Intersect: {:?} | Intersectv2: {:?}", intersect, intersect2);
         intersect
     }
 

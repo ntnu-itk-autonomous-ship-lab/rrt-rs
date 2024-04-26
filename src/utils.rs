@@ -284,7 +284,6 @@ pub fn draw_current_situation(
         .y_label_formatter(&|x| format!("{:.1}", x))
         .draw()?;
 
-    draw_multipolygon(&drawing_area, &mut chart, &enc_data.hazards, &RED)?;
     if enc_data.safe_sea_triangulation.len() > 0 {
         draw_triangulation(
             &drawing_area,
@@ -293,6 +292,7 @@ pub fn draw_current_situation(
             &YELLOW,
         )?;
     }
+    draw_multipolygon(&drawing_area, &mut chart, &enc_data.hazards, &RED)?;
     let root_node_id = tree.root_node_id().unwrap();
     draw_tree_lines(&drawing_area, &mut chart, tree, &root_node_id)?;
 

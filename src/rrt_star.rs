@@ -304,6 +304,15 @@ impl RRTStar {
                 z_new = z_new_;
                 z_new = self.insert(&z_new, &z_parent)?;
                 self.rewire(&z_new, &Z_near)?;
+
+                // utils::draw_current_situation(
+                //     "current_situation.png",
+                //     &xs_array.clone(),
+                //     &Some(vec![z_nearest.state.clone(), z_rand.state.clone()]),
+                //     &self.bookkeeping_tree,
+                //     &self.enc,
+                // )
+                // .unwrap();
             }
             self.num_iter += 1;
 
@@ -468,7 +477,6 @@ impl RRTStar {
             soln.states = vec![];
             return Ok(());
         }
-
         *soln = self.steer_through_waypoints(&soln.waypoints)?;
         Ok(())
     }
@@ -507,10 +515,10 @@ impl RRTStar {
         }
         let z_goal = RRTNode::new(self.xs_goal.clone(), Vec::new(), Vec::new(), 0.0, 0.0, 0.0);
         let z_nearest = self.nearest(&z_goal)?;
-        println!(
-            "Attempting direct goal growth from z_nearest: {:?}",
-            z_nearest.state
-        );
+        // println!(
+        //     "Attempting direct goal growth from z_nearest: {:?}",
+        //     z_nearest.state
+        // );
         self.attempt_goal_insertion(&z_nearest, max_steering_time)
     }
 
@@ -541,9 +549,14 @@ impl RRTStar {
             self.params.steering_acceptance_radius,
         )?;
         let x_new: Vector6<f64> = xs_array.last().copied().unwrap();
-
-        if !(self.is_collision_free(&xs_array) && t_new > self.params.min_steering_time && reached)
-        {
+        // println!(
+        //     "t_new: {} | reached: {} | xs_array length: {} | collision_free: {}",
+        //     t_new,
+        //     reached,
+        //     xs_array.len(),
+        //     self.is_collision_free(&xs_array)
+        // );
+        if !(self.is_collision_free(&xs_array) && reached) {
             return Ok(false);
         }
         let cost = z.cost + utils::compute_path_length_nalgebra(&xs_array);
@@ -610,7 +623,7 @@ impl RRTStar {
                 &z_new.clone(),
                 &z_near.clone(),
                 10.0 * self.params.max_steering_time,
-                1.0,
+                0.5,
             )?;
             let xs_new_near: Vector6<f64> = xs_array.last().copied().unwrap();
             if utils::rad2deg(utils::wrap_angle_diff_to_pmpi(xs_new_near[2], z_near.state[2]).abs())
@@ -1074,44 +1087,21 @@ mod tests {
             LOSGuidanceParams::new(),
             KinematicCSOGParams::new(),
             RRTStarParams {
-                max_nodes: 2000,
+                max_nodes: 500,
                 max_iter: 10000,
                 max_time: 300.0,
-                iter_between_direct_goal_growth: 100,
-                min_node_dist: 10.0,
-                goal_radius: 10.0,
-                step_size: 0.5,
+                iter_between_direct_goal_growth: 50,
+                min_node_dist: 5.0,
+                goal_radius: 500.0,
+                step_size: 5.0,
                 min_steering_time: 1.0,
-                max_steering_time: 15.0,
-                steering_acceptance_radius: 5.0,
-                gamma: 1200.0,
+                max_steering_time: 30.0,
+                steering_acceptance_radius: 10.0,
+                gamma: 2000.0,
             },
         );
-        let xs_start = [
-            6574280.0,
-            -31824.0,
-            0.0 * std::f64::consts::PI / 180.0,
-            5.0,
-            0.0,
-            0.0,
-        ];
-        let xs_goal = [
-            6578500.0,
-            -29300.0,
-            0.0 * std::f64::consts::PI / 180.0,
-            5.0,
-            0.0,
-            0.0,
-        ];
-        // let xs_start = [
-        //     6574280.0,
-        //     -31824.0,
-        //     -45.0 * std::f64::consts::PI / 180.0,
-        //     5.0,
-        //     0.0,
-        //     0.0,
-        // ];
-        // let xs_goal = [6583580.0, -31824.0, 0.0, 0.0, 0.0, 0.0];
+        let xs_start = [6574957.5, -31636.54, -2.9805577, 7.381402, 0.0, 0.0];
+        let xs_goal = [6574237.306354725, -31753.563547674556, 0.0, 0.0, 0.0, 0.0];
         rrt.enc.load_hazards_from_json()?;
         rrt.enc.load_safe_sea_triangulation_from_json()?;
         Python::with_gil(|py| -> PyResult<()> {
@@ -1120,11 +1110,7 @@ mod tests {
             let xs_goal_pyany = xs_goal.into_py(py);
             let xs_goal_py = xs_goal_pyany.as_ref(py).downcast::<PyList>().unwrap();
             rrt.set_goal_state(xs_goal_py)?;
-            rrt.set_speed_reference(6.0)?;
-
-            let do_list = Vec::<[f64; 6]>::new().into_py(py);
-            let do_list = do_list.as_ref(py).downcast::<PyList>().unwrap();
-            let result = rrt.grow_towards_goal(xs_start_py, 6.0, false, false, false, py)?;
+            let result = rrt.grow_towards_goal(xs_start_py, 7.34, false, true, false, py)?;
             let pydict = result.as_ref(py).downcast::<PyDict>().unwrap();
             println!("rrtresult states: {:?}", pydict.get_item("states"));
             Ok(())
