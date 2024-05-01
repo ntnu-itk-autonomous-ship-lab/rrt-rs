@@ -555,15 +555,15 @@ impl RRTStar {
         )?;
         let x_new: Vector6<f64> = xs_array.last().copied().unwrap();
         let d2goal = (x_new.select_rows(&[0, 1]) - self.xs_goal.select_rows(&[0, 1])).norm();
-        // println!(
-        //     "t_new: {} | reached: {} | xs_array length: {} | collision_free: {} | d2goal: {} | max_steering_time: {}",
-        //     t_new,
-        //     reached,
-        //     xs_array.len(),
-        //     self.is_collision_free(&xs_array),
-        //     d2goal,
-        //     max_steering_time
-        // );
+        println!(
+            "t_new: {} | reached: {} | xs_array length: {} | collision_free: {} | d2goal: {} | max_steering_time: {}",
+            t_new,
+            reached,
+            xs_array.len(),
+            self.is_collision_free(&xs_array),
+            d2goal,
+            max_steering_time
+        );
         if !(self.is_collision_free(&xs_array) && reached) {
             return Ok(false);
         }

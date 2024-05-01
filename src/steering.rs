@@ -615,7 +615,12 @@ impl Steering for LOSSteering<KinematicCSOG> {
         self.ship_model.reset();
         self.los_guidance.reset();
         self.kinematic_controller.reset();
-        let braking_threshold_dist = f64::max(30.0, 3.0 * acceptance_radius);
+        let braking_threshold_dist = 3.0 * acceptance_radius;
+        let mut dmargin = 0.0;
+        // Use a margin dependent on the time step and speed to avoid not detecting that the goal was reached
+        if xs_goal[3] < 0.1 && time_step > 2.5 {
+            dmargin = 0.5 * acceptance_radius;
+        }
         while time < max_steering_time {
             let mut refs: (f64, f64) = self
                 .los_guidance
@@ -666,7 +671,7 @@ impl Steering for LOSSteering<KinematicCSOG> {
             //         xs_next[3],
             //     );
             // }
-            if dist2goal <= acceptance_radius {
+            if dist2goal <= acceptance_radius + dmargin {
                 reached_goal = true;
                 break;
             }
