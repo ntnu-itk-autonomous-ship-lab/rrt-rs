@@ -324,7 +324,6 @@ impl IRRTStar {
                 self.num_nodes
             );
         }
-        //self.draw_tree(Some(&opt_soln))?;
         Ok(self.opt_soln.to_object(py))
     }
 }
@@ -387,7 +386,6 @@ impl IRRTStar {
     pub fn add_solution(&mut self, z: &RRTNode, z_goal_attempt: &RRTNode) -> PyResult<()> {
         let z_goal_ = self.insert(&z_goal_attempt.clone(), &z)?;
         self.solutions.push(z_goal_.id.unwrap().clone());
-
         self.c_best = self.c_best.min(z_goal_.cost);
         Ok(())
     }
@@ -942,7 +940,6 @@ impl IRRTStar {
             },
         );
         self.optimize_solution(&mut opt_soln)?;
-
         Ok(opt_soln)
     }
 

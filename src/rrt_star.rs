@@ -304,15 +304,6 @@ impl RRTStar {
                 z_new = z_new_;
                 z_new = self.insert(&z_new, &z_parent)?;
                 self.rewire(&z_new, &Z_near)?;
-
-                // utils::draw_current_situation(
-                //     "current_situation.png",
-                //     &xs_array.clone(),
-                //     &Some(vec![z_nearest.state.clone(), z_rand.state.clone()]),
-                //     &self.bookkeeping_tree,
-                //     &self.enc,
-                // )
-                // .unwrap();
             }
             self.num_iter += 1;
 
@@ -337,7 +328,6 @@ impl RRTStar {
                 self.num_nodes
             );
         }
-        //self.draw_tree(Some(&opt_soln))?;
         Ok(self.opt_soln.to_object(py))
     }
 }
@@ -399,7 +389,6 @@ impl RRTStar {
     pub fn add_solution(&mut self, z: &RRTNode, z_goal_attempt: &RRTNode) -> PyResult<()> {
         let z_goal_ = self.insert(&z_goal_attempt.clone(), &z)?;
         self.solutions.push(z_goal_.id.unwrap().clone());
-
         self.c_best = self.c_best.min(z_goal_.cost);
         Ok(())
     }
@@ -555,15 +544,15 @@ impl RRTStar {
         )?;
         let x_new: Vector6<f64> = xs_array.last().copied().unwrap();
         let d2goal = (x_new.select_rows(&[0, 1]) - self.xs_goal.select_rows(&[0, 1])).norm();
-        println!(
-            "t_new: {} | reached: {} | xs_array length: {} | collision_free: {} | d2goal: {} | max_steering_time: {}",
-            t_new,
-            reached,
-            xs_array.len(),
-            self.is_collision_free(&xs_array),
-            d2goal,
-            max_steering_time
-        );
+        // println!(
+        //     "t_new: {} | reached: {} | xs_array length: {} | collision_free: {} | d2goal: {} | max_steering_time: {}",
+        //     t_new,
+        //     reached,
+        //     xs_array.len(),
+        //     self.is_collision_free(&xs_array),
+        //     d2goal,
+        //     max_steering_time
+        // );
         if !(self.is_collision_free(&xs_array) && reached) {
             return Ok(false);
         }
@@ -957,7 +946,6 @@ impl RRTStar {
             },
         );
         self.optimize_solution(&mut opt_soln)?;
-
         Ok(opt_soln)
     }
 
