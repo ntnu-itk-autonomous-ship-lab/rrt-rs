@@ -115,27 +115,55 @@ impl RRTResult {
 
 impl ToPyObject for RRTResult {
     fn to_object(&self, py: Python) -> PyObject {
-        let waypoints = PyList::empty(py);
-        let states = PyList::empty(py);
-        let inputs = PyList::empty(py);
-        let times = PyList::empty(py);
-        let n_states = self.states.len();
-        for i in 0..n_states {
-            // Only the starting root state should have a time of 0.0
-            if i > 0 && self.times[i] < 0.0001 {
-                continue;
-            }
-            states.append(self.states[i].to_object(py)).unwrap();
-            times.append(self.times[i].to_object(py)).unwrap();
-        }
+        // for i in 0..n_states {
+        //     // Only the starting root state should have a time of 0.0
+        //     if i > 0 && self.times[i] < 0.0001 {
+        //         continue;
+        //     }
+        //     states.append(self.states[i].to_object(py)).unwrap();
+        //     times.append(self.times[i].to_object(py)).unwrap();
+        // }
 
-        for inp in self.inputs.iter() {
-            inputs.append(inp.to_object(py)).unwrap();
-        }
+        // for inp in self.inputs.iter() {
+        //     inputs.append(inp.to_object(py)).unwrap();
+        // }
 
-        for wp in self.waypoints.iter() {
-            waypoints.append(wp.to_object(py)).unwrap();
-        }
+        // for wp in self.waypoints.iter() {
+        //     waypoints.append(wp.to_object(py)).unwrap();
+        // }
+
+        // Efficiently collect the states and times, skipping invalid times
+        let states_and_times = self
+            .states
+            .iter()
+            .zip(self.times.iter())
+            .filter(|(_, &time)| time >= 0.0001 || time == 0.0)
+            .map(|(state, &time)| (state.to_object(py), time.to_object(py)))
+            .unzip::<_, _, Vec<_>, Vec<_>>();
+
+        let (states_objects, times_objects): (Vec<PyObject>, Vec<PyObject>) = states_and_times;
+
+        // Create Python lists from the collected objects
+        let states = PyList::new(py, states_objects);
+        let times = PyList::new(py, times_objects);
+
+        // Convert inputs and waypoints directly to Python lists
+        let inputs = PyList::new(
+            py,
+            self.inputs
+                .iter()
+                .map(|inp| inp.to_object(py))
+                .collect::<Vec<_>>(),
+        );
+        let waypoints = PyList::new(
+            py,
+            self.waypoints
+                .iter()
+                .map(|wp| wp.to_object(py))
+                .collect::<Vec<_>>(),
+        );
+
+        // Convert cost to a Python object
         let cost = self.cost.to_object(py);
         let result_dict = PyDict::new(py);
         result_dict
@@ -153,6 +181,7 @@ impl ToPyObject for RRTResult {
         result_dict
             .set_item("cost", cost)
             .expect("Solution cost should be set");
+
         result_dict.to_object(py)
     }
 }
