@@ -8,7 +8,7 @@
 
 import pathlib
 import time
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from typing import Optional, Tuple
 
 import colav_simulator.common.map_functions as mapf
@@ -79,25 +79,29 @@ class RRTParams:
 
 @dataclass
 class RRTConfig:
-    params: RRTParams = RRTParams()
-    model: models.KinematicCSOGParams = models.KinematicCSOGParams(
-        name="KinematicCSOG",
-        draft=0.5,
-        length=15.0,
-        width=4.0,
-        T_chi=6.0,
-        T_U=6.0,
-        r_max=np.deg2rad(10),
-        U_min=0.0,
-        U_max=10.0,
+    params: RRTParams = field(default_factory=lambda: RRTParams())
+    model: models.KinematicCSOGParams = field(
+        default_factory=lambda: models.KinematicCSOGParams(
+            name="KinematicCSOG",
+            draft=0.5,
+            length=15.0,
+            width=4.0,
+            T_chi=6.0,
+            T_U=6.0,
+            r_max=np.deg2rad(10),
+            U_min=0.0,
+            U_max=10.0,
+        )
     )
-    los: guidances.LOSGuidanceParams = guidances.LOSGuidanceParams(
-        K_p=0.035,
-        K_i=0.0,
-        pass_angle_threshold=90.0,
-        R_a=25.0,
-        max_cross_track_error_int=30.0,
-        cross_track_error_int_threshold=30.0,
+    los: guidances.LOSGuidanceParams = field(
+        default_factory=lambda: guidances.LOSGuidanceParams(
+            K_p=0.035,
+            K_i=0.0,
+            pass_angle_threshold=90.0,
+            R_a=25.0,
+            max_cross_track_error_int=30.0,
+            cross_track_error_int_threshold=30.0,
+        )
     )
 
     @classmethod
@@ -113,8 +117,8 @@ class RRTConfig:
 
 @dataclass
 class RRTPlannerParams:
-    los: guidances.LOSGuidanceParams = guidances.LOSGuidanceParams()
-    rrt: RRTConfig = RRTConfig()
+    los: guidances.LOSGuidanceParams = field(default_factory=lambda: guidances.LOSGuidanceParams())
+    rrt: RRTConfig = field(default_factory=lambda: RRTConfig())
 
     @classmethod
     def from_dict(cls, config_dict: dict):
@@ -156,6 +160,8 @@ class RRT(ci.ICOLAV):
     ) -> np.ndarray:
         assert goal_state is not None, "Goal state must be provided to the RRT"
         assert enc is not None, "ENC must be provided to the RRT"
+        if t == 0:
+            self.reset()
         if not self._initialized:
             self._min_depth = 0  # mapf.find_minimum_depth(kwargs["os_draft"], enc)
             self._t_prev = t
@@ -241,6 +247,20 @@ class RRT(ci.ICOLAV):
             plt_handles["colav_nominal_trajectory"].set_ydata(self._rrt_trajectory[0, 0:-1:10])
 
         return plt_handles
+    
+    def reset(self):
+        """Resets the RRT to its initial state."""
+        self._rrt_inputs: np.ndarray = np.empty(3)
+        self._rrt_trajectory: np.ndarray = np.empty(6)
+        self._rrt_waypoints: np.ndarray = np.empty(3)
+        self._geometry_tree: strtree.STRtree = strtree.STRtree([])
+
+        self._min_depth: int = 0
+
+        self._map_origin: np.ndarray = np.array([])
+        self._references = np.array([])
+        self._initialized = False
+        self._t_prev: float = 0.0
 
 
 if __name__ == "__main__":
