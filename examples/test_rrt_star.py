@@ -1,14 +1,12 @@
 """
-    Demonstrates how to use the RRT* algorithm with the colav-simulator. Note that the underlying ship model in the planner does not
-    match the ship model used from the colav-simulator, and thus should be tuned for usage outside this example.
+Demonstrates how to use the RRT* algorithm with the colav-simulator. Note that the underlying ship model in the planner does not
+match the ship model used from the colav-simulator, and thus should be tuned for usage outside this example.
 
-    Remember to install the dependencies (COLAV-simulator) before running this script.
+Remember to install the dependencies (COLAV-simulator) before running this script.
 
-    Author: Trym Tengesdal
+Author: Trym Tengesdal
 """
 
-import pathlib
-import time
 from dataclasses import asdict, dataclass, field
 from typing import Optional, Tuple
 
@@ -21,7 +19,6 @@ import colav_simulator.core.models as models
 import colav_simulator.core.stochasticity as stochasticity
 import matplotlib.pyplot as plt
 import numpy as np
-import pandas as pd
 import rrt_star_lib
 import seacharts.enc as senc
 from colav_simulator.scenario_generator import ScenarioGenerator
@@ -29,7 +26,9 @@ from colav_simulator.simulator import Simulator
 from shapely import strtree
 
 
-def parse_rrt_solution(soln: dict) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, float]:
+def parse_rrt_solution(
+    soln: dict,
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, float]:
     """Parses the RRT solution.
 
     Args:
@@ -122,7 +121,11 @@ class RRTConfig:
 class RRTPlannerParams:
     los: guidances.LOSGuidanceParams = field(
         default_factory=lambda: guidances.LOSGuidanceParams(
-            K_p=0.035, K_i=0.0, pass_angle_threshold=90.0, R_a=25.0, max_cross_track_error_int=30.0
+            K_p=0.035,
+            K_i=0.0,
+            pass_angle_threshold=90.0,
+            R_a=25.0,
+            max_cross_track_error_int=30.0,
         )
     )
     rrt: RRTConfig = field(default_factory=lambda: RRTConfig())
@@ -140,7 +143,9 @@ class RRTPlannerParams:
 class RRTStar(ci.ICOLAV):
     def __init__(self, config: RRTPlannerParams) -> None:
         self._rrt_config = config.rrt
-        self._rrt = rrt_star_lib.RRTStar(config.rrt.los, config.rrt.model, config.rrt.params)
+        self._rrt = rrt_star_lib.RRTStar(
+            config.rrt.los, config.rrt.model, config.rrt.params
+        )
         self._los = guidances.LOSGuidance(config.los)
 
         self._rrt_inputs: np.ndarray = np.empty(3)
@@ -155,13 +160,26 @@ class RRTStar(ci.ICOLAV):
         self._initialized = False
         self._t_prev: float = 0.0
 
+    def reset(self) -> None:
+        self._references = np.zeros((9, 1))
+        self._t_prev = 0.0
+        self._initialized = False
+        self._rrt.reset(0)
+        self._rrt_inputs = np.empty(3)
+        self._rrt_trajectory = np.empty(6)
+        self._rrt_waypoints = np.empty(3)
+        self._geometry_tree = strtree.STRtree([])
+        self._min_depth = 0
+        self._map_origin = np.array([])
+        self._los.reset()
+
     def plan(
         self,
         t: float,
         waypoints: np.ndarray,
         speed_plan: np.ndarray,
         ownship_state: np.ndarray,
-        do_list: list,
+        do_list: List[Tuple[int, np.ndarray, np.ndarray, float, float]],
         enc: Optional[senc.ENC] = None,
         goal_state: Optional[np.ndarray] = None,
         w: Optional[stochasticity.DisturbanceData] = None,
@@ -176,17 +194,25 @@ class RRTStar(ci.ICOLAV):
             self._t_prev = t
             self._map_origin = ownship_state[:2]
             self._initialized = True
-            relevant_grounding_hazards = mapf.extract_relevant_grounding_hazards_as_union(
-                self._min_depth, enc, buffer=5.0, show_plots=True
+            relevant_grounding_hazards = (
+                mapf.extract_relevant_grounding_hazards_as_union(
+                    self._min_depth, enc, buffer=5.0, show_plots=True
+                )
             )
-            self._geometry_tree, _ = mapf.fill_rtree_with_geometries(relevant_grounding_hazards)
-            safe_sea_triangulation = mapf.create_safe_sea_triangulation(enc, self._min_depth, show_plots=False)
+            self._geometry_tree, _ = mapf.fill_rtree_with_geometries(
+                relevant_grounding_hazards
+            )
+            safe_sea_triangulation = mapf.create_safe_sea_triangulation(
+                enc, self._min_depth, show_plots=False
+            )
             self._rrt.transfer_bbox(enc.bbox)
             self._rrt.transfer_enc_hazards(relevant_grounding_hazards[0])
             self._rrt.transfer_safe_sea_triangulation(safe_sea_triangulation)
             self._rrt.set_goal_state(goal_state.tolist())
 
-            U_d = ownship_state[3]  # Constant desired speed given by the initial own-ship speed
+            U_d = ownship_state[
+                3
+            ]  # Constant desired speed given by the initial own-ship speed
             rrt_solution: dict = self._rrt.grow_towards_goal(
                 ownship_state=ownship_state.tolist(),
                 U_d=U_d,
@@ -194,7 +220,9 @@ class RRTStar(ci.ICOLAV):
                 return_on_first_solution=False,
                 verbose=True,
             )
-            self._rrt_waypoints, self._rrt_trajectory, self._rrt_inputs, times, cost = parse_rrt_solution(rrt_solution)
+            self._rrt_waypoints, self._rrt_trajectory, self._rrt_inputs, times, cost = (
+                parse_rrt_solution(rrt_solution)
+            )
 
             if enc is not None:
                 plotters.plot_rrt_tree(self._rrt.get_tree_as_list_of_dicts(), enc)
@@ -217,7 +245,12 @@ class RRTStar(ci.ICOLAV):
                 )
                 print(f"Num tree nodes: {self._rrt.get_num_nodes()}")
                 enc.draw_polygon(ship_poly, color="yellow")
-                enc.draw_circle(center=(goal_state[1], goal_state[0]), radius=20.0, color="magenta", alpha=0.7)
+                enc.draw_circle(
+                    center=(goal_state[1], goal_state[0]),
+                    radius=20.0,
+                    color="magenta",
+                    alpha=0.7,
+                )
         else:
             self._rrt_trajectory = self._rrt_trajectory[:, 1:]
             self._rrt_inputs = self._rrt_inputs[:, 1:]
@@ -251,10 +284,16 @@ class RRTStar(ci.ICOLAV):
                 "t": self._t_prev,
             }
 
-    def plot_results(self, ax_map: plt.Axes, enc: senc.ENC, plt_handles: dict, **kwargs) -> dict:
+    def plot_results(
+        self, ax_map: plt.Axes, enc: senc.ENC, plt_handles: dict, **kwargs
+    ) -> dict:
         if self._rrt_trajectory.size > 6:
-            plt_handles["colav_nominal_trajectory"].set_xdata(self._rrt_trajectory[1, 0:])
-            plt_handles["colav_nominal_trajectory"].set_ydata(self._rrt_trajectory[0, 0:])
+            plt_handles["colav_nominal_trajectory"].set_xdata(
+                self._rrt_trajectory[1, 0:]
+            )
+            plt_handles["colav_nominal_trajectory"].set_ydata(
+                self._rrt_trajectory[0, 0:]
+            )
         return plt_handles
 
     def reset(self):
@@ -293,8 +332,14 @@ if __name__ == "__main__":
     rrt = RRTStar(params)
 
     scenario_generator = ScenarioGenerator()
-    scenario_data = scenario_generator.generate(config_file=scenario_file, new_load_of_map_data=True)
+    scenario_data = scenario_generator.generate(
+        config_file=scenario_file, new_load_of_map_data=True
+    )
     simulator = Simulator()
     # Hint: Close ENC Seacharts plot with RRT tree to speed up livesim
-    output = simulator.run([scenario_data], colav_systems=[(0, rrt)], terminate_on_collision_or_grounding=False)
+    output = simulator.run(
+        [scenario_data],
+        colav_systems=[(0, rrt)],
+        terminate_on_collision_or_grounding=False,
+    )
     print("done")
