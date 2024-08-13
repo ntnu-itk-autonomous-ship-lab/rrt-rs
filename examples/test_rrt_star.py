@@ -179,7 +179,7 @@ class RRTStar(ci.ICOLAV):
         waypoints: np.ndarray,
         speed_plan: np.ndarray,
         ownship_state: np.ndarray,
-        do_list: List[Tuple[int, np.ndarray, np.ndarray, float, float]],
+        do_list: list[Tuple[int, np.ndarray, np.ndarray, float, float]],
         enc: Optional[senc.ENC] = None,
         goal_state: Optional[np.ndarray] = None,
         w: Optional[stochasticity.DisturbanceData] = None,
