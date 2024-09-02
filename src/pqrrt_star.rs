@@ -262,6 +262,7 @@ impl PQRRTStar {
         U_d: f64,
         initialized: bool,
         return_on_first_solution: bool,
+        verbose: bool,
         py: Python<'_>,
     ) -> PyResult<PyObject> {
         let start = Instant::now();
@@ -339,7 +340,15 @@ impl PQRRTStar {
             }
         };
         let duration = start.elapsed();
-        println!("PQRRT* runtime: {:?}", duration.as_millis() as f64 / 1000.0);
+        if verbose {
+            println!(
+                "[PQ-RRT*] Runtime: {:?} | Best solution cost: {:.2} | Number of nodes: {} | Tree size: {}",
+                duration.as_millis() as f64 / 1000.0,
+                self.opt_soln.cost,
+                self.opt_soln.states.len(),
+                self.num_nodes
+            );
+        }
         //self.draw_tree(Some(&opt_soln))?;
         Ok(self.opt_soln.to_object(py))
     }
