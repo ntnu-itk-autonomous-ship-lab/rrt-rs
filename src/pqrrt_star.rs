@@ -416,12 +416,12 @@ impl PQRRTStar {
     pub fn add_solution(&mut self, z: &RRTNode, z_goal_attempt: &RRTNode) -> PyResult<()> {
         let z_goal_ = self.insert(&z_goal_attempt.clone(), &z)?;
         self.solutions.push(z_goal_.id.unwrap().clone());
-        if z_goal_.cost < self.c_best {
-            println!(
-                "Solution Found! Num iter: {} | Num nodes: {} | new c_best: {} | prev c_best: {}",
-                self.num_iter, self.num_nodes, z_goal_.cost, self.c_best
-            );
-        }
+        // if z_goal_.cost < self.c_best {
+        //     println!(
+        //         "Solution Found! Num iter: {} | Num nodes: {} | new c_best: {} | prev c_best: {}",
+        //         self.num_iter, self.num_nodes, z_goal_.cost, self.c_best
+        //     );
+        // }
         self.c_best = self.c_best.min(z_goal_.cost);
         Ok(())
     }
@@ -628,7 +628,7 @@ impl PQRRTStar {
             return Ok(z.clone());
         }
         if z_parent.id == z.id {
-            println!("Insert: Attempted to insert node with same id as parent");
+            // println!("Insert: Attempted to insert node with same id as parent");
             return Ok(z.clone());
         }
         let z_parent_id = z_parent.clone().id.unwrap();
@@ -729,7 +729,6 @@ impl PQRRTStar {
                         && z_new_near.cost < self.c_best
                     {
                         self.c_best = z_new_near.cost;
-                        println!("Rewired to solution! | new c_best : {}", self.c_best);
                     }
                     // println!(
                     //     "Rewired! | Old cost: {} | New cost: {} | Num iter : {} | Num nodes : {} | c_best : {}", z_near.cost, z_new_near.cost,
@@ -785,7 +784,7 @@ impl PQRRTStar {
 
         if self.solutions.contains(&node_data.id.unwrap()) && node_data.cost < self.c_best {
             self.c_best = node_data.cost;
-            println!("Rewired to solution! | new c_best : {}", self.c_best);
+            // println!("Rewired to solution! | new c_best : {}", self.c_best);
         }
         Ok(node_data.cost)
     }
@@ -1108,12 +1107,12 @@ impl PQRRTStar {
             },
         );
         self.optimize_solution(&mut opt_soln)?;
-        println!(
-            "Extracted best solution: {:.2} | Number of nodes: {} | Tree size: {}",
-            opt_soln.cost,
-            opt_soln.states.len(),
-            self.num_nodes
-        );
+        // println!(
+        //     "Extracted best solution: {:.2} | Number of nodes: {} | Tree size: {}",
+        //     opt_soln.cost,
+        //     opt_soln.states.len(),
+        //     self.num_nodes
+        // );
         Ok(opt_soln)
     }
 

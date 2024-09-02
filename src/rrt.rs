@@ -264,13 +264,13 @@ impl RRT {
         while self.num_nodes < self.params.max_nodes && self.num_iter < self.params.max_iter {
             let success = self.attempt_direct_goal_growth(goal_attempt_steering_time)?;
             if success && return_on_first_solution {
-                println!("Goal reached! Returning on first solution");
+                // println!("Goal reached! Returning on first solution");
                 break;
             }
 
             let success = self.attempt_goal_insertion(&z_new, self.params.max_steering_time)?;
             if success && return_on_first_solution {
-                println!("Goal reached! Returning on first solution");
+                // println!("Goal reached! Returning on first solution");
                 break;
             }
             z_new = RRTNode::default();
@@ -395,12 +395,12 @@ impl RRT {
     pub fn add_solution(&mut self, z: &RRTNode, z_goal_attempt: &RRTNode) -> PyResult<()> {
         let z_goal_ = self.insert(&z_goal_attempt.clone(), &z)?;
         self.solutions.push(z_goal_.clone());
-        if z_goal_.cost < self.c_best {
-            println!(
-                "Solution Found! Num iter: {} | Num nodes: {} | new c_best: {} | prev c_best: {}",
-                self.num_iter, self.num_nodes, z_goal_.cost, self.c_best
-            );
-        }
+        // if z_goal_.cost < self.c_best {
+        //     println!(
+        //         "Solution Found! Num iter: {} | Num nodes: {} | new c_best: {} | prev c_best: {}",
+        //         self.num_iter, self.num_nodes, z_goal_.cost, self.c_best
+        //     );
+        // }
         self.c_best = self.c_best.min(z_goal_.cost);
         Ok(())
     }
@@ -551,7 +551,6 @@ impl RRT {
             return Ok(false);
         }
         if self.reached_goal(&z) && self.num_iter > 0 {
-            println!("Reached goal!");
             let z_parent = self
                 .bookkeeping_tree
                 .get(&z.clone().id.unwrap())
@@ -600,7 +599,7 @@ impl RRT {
             return Ok(z.clone());
         }
         if z_parent.id == z.id {
-            println!("Insert: Attempted to insert node with same id as parent");
+            // println!("Insert: Attempted to insert node with same id as parent");
             return Ok(z.clone());
         }
         let z_parent_id = z_parent.clone().id.unwrap();
@@ -777,12 +776,12 @@ impl RRT {
             },
         );
         self.optimize_solution(&mut opt_soln)?;
-        println!(
-            "Extracted best solution: {:.2} | Number of nodes: {} | Tree size: {}",
-            opt_soln.cost,
-            opt_soln.states.len(),
-            self.num_nodes
-        );
+        // println!(
+        //     "Extracted best solution: {:.2} | Number of nodes: {} | Tree size: {}",
+        //     opt_soln.cost,
+        //     opt_soln.states.len(),
+        //     self.num_nodes
+        // );
         Ok(opt_soln)
     }
 

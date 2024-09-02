@@ -1,5 +1,6 @@
 """
-    Demonstrates how to use the PQ-RRT* algorithm with the colav-simulator.
+    Demonstrates how to use the PQ-RRT* algorithm with the colav-simulator. Note that the underlying ship model in the planner does not
+    match the ship model used from the colav-simulator, and thus should be tuned for usage outside this example.
 
     Remember to install the dependencies (COLAV-simulator) before running this script.
 
@@ -211,6 +212,7 @@ class PQRRTStar(ci.ICOLAV):
                 U_d=U_d,
                 initialized=False,
                 return_on_first_solution=False,
+                verbose=True,
             )
             self._rrt_waypoints, self._rrt_trajectory, self._rrt_inputs, times, cost = parse_rrt_solution(rrt_solution)
             if enc is not None:
@@ -273,7 +275,7 @@ class PQRRTStar(ci.ICOLAV):
             plt_handles["colav_nominal_trajectory"].set_xdata(self._rrt_trajectory[1, 0:])
             plt_handles["colav_nominal_trajectory"].set_ydata(self._rrt_trajectory[0, 0:])
         return plt_handles
-    
+
     def reset(self):
         """Resets the PQRRTStar to its initial state."""
         self._rrt_inputs: np.ndarray = np.empty(3)
@@ -291,12 +293,12 @@ class PQRRTStar(ci.ICOLAV):
 
 if __name__ == "__main__":
     params = RRTPlannerParams()
-    scenario_file = dp.scenarios / "rogaland_random_rl.yaml"
+    scenario_file = dp.scenarios / "rrt_test.yaml"
 
     params.rrt.params = PQRRTStarParams(
         max_nodes=10000,
         max_iter=25000,
-        max_time=50.0,
+        max_time=5.0,
         iter_between_direct_goal_growth=500,
         min_node_dist=5.0,
         goal_radius=100.0,
@@ -316,5 +318,6 @@ if __name__ == "__main__":
     scenario_generator = ScenarioGenerator()
     scenario_data = scenario_generator.generate(config_file=scenario_file, new_load_of_map_data=True)
     simulator = Simulator()
-    output = simulator.run([scenario_data], colav_systems=[(0, rrt)])
+    # Hint: Close ENC Seacharts plot with RRT tree to speed up livesim
+    output = simulator.run([scenario_data], colav_systems=[(0, rrt)], terminate_on_collision_or_grounding=False)
     print("done")
