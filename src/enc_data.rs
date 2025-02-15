@@ -247,10 +247,10 @@ impl ENCData {
         &mut self,
         p_start: &Vector2<f64>,
         p_goal: &Vector2<f64>,
-        c_best: f64,
+        _c_best: f64,
     ) -> PyResult<()> {
         let c_opt = (p_start - p_goal).norm();
-        let ellipsoid_envelope_bbox = Rect::new(
+        let _ellipsoid_envelope_bbox = Rect::new(
             coord! {x: p_start[0] - c_opt, y: p_start[1] - c_opt},
             coord! {x: p_goal[0] + c_opt, y: p_goal[1] + c_opt},
         );

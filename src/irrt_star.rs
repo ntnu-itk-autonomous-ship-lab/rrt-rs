@@ -309,7 +309,7 @@ impl IRRTStar {
         }
         self.opt_soln = match self.extract_best_solution() {
             Ok(soln) => soln,
-            Err(e) => {
+            Err(_e) => {
                 println!("No solution found. Check the feasibility of the planning problem (algorithm tuning, safe sea CDT and considered start + goal states).");
                 RRTResult::new((vec![], vec![], vec![], vec![], std::f64::INFINITY))
             }
@@ -1111,7 +1111,7 @@ mod tests {
             rrt.set_goal_state(xs_goal_py)?;
             rrt.set_speed_reference(6.0)?;
 
-            let result = rrt.grow_towards_goal(xs_start_py, 6.0, false, false, py)?;
+            let result = rrt.grow_towards_goal(xs_start_py, 6.0, false, false, false, py)?;
             let pydict = result.as_ref(py).downcast::<PyDict>().unwrap();
             println!("rrtresult states: {:?}", pydict.get_item("states"));
             Ok(())
