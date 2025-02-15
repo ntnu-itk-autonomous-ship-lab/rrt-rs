@@ -95,9 +95,6 @@ pub struct RRT {
 impl RRT {
     #[new]
     pub fn py_new(los: LOSGuidanceParams, model: KinematicCSOGParams, params: RRTParams) -> Self {
-        // println!("RRT parameters: {:?}", params);
-        // println!("RRT model: {:?}", model);
-        // println!("RRT LOS: {:?}", los);
         Self {
             c_best: std::f64::INFINITY,
             solutions: Vec::new(),
@@ -250,9 +247,6 @@ impl RRT {
         py: Python<'_>,
     ) -> PyResult<PyObject> {
         let start = Instant::now();
-        // println!("Ownship state: {:?}", ownship_state);
-        // println!("Goal state: {:?}", self.xs_goal);
-        // println!("U_d: {:?}", U_d);
 
         if !initialized {
             self.set_speed_reference(U_d)?;
@@ -264,13 +258,11 @@ impl RRT {
         while self.num_nodes < self.params.max_nodes && self.num_iter < self.params.max_iter {
             let success = self.attempt_direct_goal_growth(goal_attempt_steering_time)?;
             if success && return_on_first_solution {
-                // println!("Goal reached! Returning on first solution");
                 break;
             }
 
             let success = self.attempt_goal_insertion(&z_new, self.params.max_steering_time)?;
             if success && return_on_first_solution {
-                // println!("Goal reached! Returning on first solution");
                 break;
             }
             z_new = RRTNode::default();
@@ -301,12 +293,7 @@ impl RRT {
                 z_new = self.insert(&z_new, &z_nearest)?;
             }
             self.num_iter += 1;
-            // if self.num_iter % 5000 == 0 {
-            //     println!(
-            //         "Num iter: {} | Num nodes: {} | c_best: {}",
-            //         self.num_iter, self.num_nodes, self.c_best
-            //     );
-            // }
+
             if start.elapsed().as_secs() as f64 > self.params.max_time {
                 break;
             }
@@ -364,10 +351,6 @@ impl RRT {
         node_dict.set_item("time", node_data.time)?;
         node_dict.set_item("id", node_id_int.clone())?;
         node_dict.set_item("parent_id", parent_id_int.clone())?;
-        // println!(
-        //     "Node ID: {} | Parent ID: {} | cost: {}",
-        //     node_id_int, parent_id_int, node_data.cost
-        // );
 
         *total_num_nodes += 1;
         list.append(node_dict)?;
@@ -395,12 +378,7 @@ impl RRT {
     pub fn add_solution(&mut self, z: &RRTNode, z_goal_attempt: &RRTNode) -> PyResult<()> {
         let z_goal_ = self.insert(&z_goal_attempt.clone(), &z)?;
         self.solutions.push(z_goal_.clone());
-        // if z_goal_.cost < self.c_best {
-        //     println!(
-        //         "Solution Found! Num iter: {} | Num nodes: {} | new c_best: {} | prev c_best: {}",
-        //         self.num_iter, self.num_nodes, z_goal_.cost, self.c_best
-        //     );
-        // }
+
         self.c_best = self.c_best.min(z_goal_.cost);
         Ok(())
     }
@@ -464,39 +442,11 @@ impl RRT {
 
     // Prune state nodes from the solution to make the trajectory smoother and more optimal wrt distance
     fn optimize_solution(&mut self, soln: &mut RRTResult) -> PyResult<()> {
-        //soln.save_to_json()?;
         if soln.states.len() < 2 {
             soln.states = vec![];
             return Ok(());
         }
-        // let mut states: Vec<[f64; 6]> = vec![soln.states.last().unwrap().clone()];
-        // let mut idx: usize = soln.states.len() - 1;
-        // while idx > 0 {
-        //     for j in 0..idx {
-        //         let state_j = Vector6::from_vec(soln.states[j].clone().to_vec());
-        //         let state_idx = Vector6::from_vec(soln.states[idx].clone().to_vec());
-        //         let (xs_array, _, _, _, reached) = self.steering.steer(
-        //             &state_j,
-        //             &state_idx,
-        //             self.U_d,
-        //             self.params.steering_acceptance_radius,
-        //             self.params.step_size,
-        //             10.0 * self.params.max_steering_time,
-        //         );
-        //         let is_coll = self.is_collision_free(&xs_array);
-        //         if (is_coll && reached) || j == idx - 1 {
-        //             states.push(soln.states[j].clone());
-        //             idx = j;
-        //             break;
-        //         }
-        //     }
-        // }
-        // assert_eq!(
-        //     states.len() > 1,
-        //     true,
-        //     "Optimized solution has less than 2 states",
-        // );
-        // states.reverse();
+
         // *soln = self.steer_through_waypoints(&soln.waypoints)?;
         Ok(())
     }
@@ -510,11 +460,9 @@ impl RRT {
 
     pub fn is_collision_free(&self, xs_array: &Vec<Vector6<f64>>) -> bool {
         if self.enc.is_empty() {
-            println!("ENC is empty");
             return true;
         }
         if !self.enc.array_inside_bbox(&xs_array) {
-            // println!("Trajectory outside ENC bbox");
             return false;
         }
         let is_collision_free = !self.enc.intersects_with_trajectory(&xs_array);
@@ -558,10 +506,7 @@ impl RRT {
                 .data()
                 .clone();
             self.add_solution(&z_parent, &z)?;
-            // println!(
-            //     "Goal reached! Num iter: {} | Num nodes: {} | c_best: {}",
-            //     self.num_iter, self.num_nodes, self.c_best
-            // );
+
             return Ok(true);
         }
         let mut z_goal_ = RRTNode::new(self.xs_goal.clone(), Vec::new(), Vec::new(), 0.0, 0.0, 0.0);
@@ -579,10 +524,6 @@ impl RRT {
         }
         let cost = z.cost + utils::compute_path_length_nalgebra(&xs_array);
         if cost >= self.c_best {
-            // println!(
-            //     "Attempted goal insertion | cost : {} | c_best : {}",
-            //     cost, self.c_best
-            // );
             return Ok(false);
         }
         z_goal_ = RRTNode::new(x_new, xs_array, u_array, cost, 0.0, z.time + t_new);
@@ -595,11 +536,9 @@ impl RRT {
     /// we need to keep track of the node id in both trees. This is done by setting the id of the node in the Tree
     pub fn insert(&mut self, z: &RRTNode, z_parent: &RRTNode) -> PyResult<RRTNode> {
         if z.id.is_some() {
-            // println!("Insert: Node already in tree");
             return Ok(z.clone());
         }
         if z_parent.id == z.id {
-            // println!("Insert: Attempted to insert node with same id as parent");
             return Ok(z.clone());
         }
         let z_parent_id = z_parent.clone().id.unwrap();
@@ -704,10 +643,9 @@ impl RRT {
         let p_goal: Vector2<f64> = self.xs_goal.fixed_rows::<2>(0).into();
         let mut map_bbox = self.enc.bbox.clone();
         map_bbox = utils::bbox_from_corner_points(&p_start, &p_goal, 500.0, 500.0);
-        // println!("Map bbox: {:?}", map_bbox);
+
         loop {
             let p_rand = if !self.enc.safe_sea_triangulation.is_empty() {
-                // println!("Sampled from triangulation!");
                 utils::sample_from_triangulation(
                     &self.enc.safe_sea_triangulation,
                     &self.weighted_index_distribution,
@@ -717,9 +655,7 @@ impl RRT {
                 utils::sample_from_bbox(&map_bbox, &mut self.rng)
             };
 
-            // println!("Sampled: {:?}", p_rand);
             if !self.enc.inside_hazards(&p_rand) && self.enc.inside_bbox(&p_rand) {
-                // println!("Sampled outside hazard");
                 return Ok(RRTNode {
                     id: None,
                     state: Vector6::new(p_rand[0], p_rand[1], 0.0, 0.0, 0.0, 0.0),
@@ -729,8 +665,6 @@ impl RRT {
                     controls: Vec::new(),
                     time: 0.0,
                 });
-            } else {
-                //println!("Sampled inside hazard");
             }
         }
     }
@@ -776,12 +710,7 @@ impl RRT {
             },
         );
         self.optimize_solution(&mut opt_soln)?;
-        // println!(
-        //     "Extracted best solution: {:.2} | Number of nodes: {} | Tree size: {}",
-        //     opt_soln.cost,
-        //     opt_soln.states.len(),
-        //     self.num_nodes
-        // );
+
         Ok(opt_soln)
     }
 

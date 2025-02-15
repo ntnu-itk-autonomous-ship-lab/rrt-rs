@@ -154,12 +154,6 @@ pub fn Dmtrx(
     let nu_squared = nu.component_mul(&nu);
     let D_c_res =
         D_c * Matrix3::from_partial_diagonal(&[nu_squared[0], nu_squared[1], nu_squared[2]]);
-    // println!("D_l: {:?}", D_l);
-    // println!("D_q: {:?}", D_q);
-    // println!("D_q_res: {:?}", D_q_res);
-    // println!("D_c: {:?}", D_c);
-    // println!("D_c_res: {:?}", D_c_res);
-    // println!("nu_squared: {:?}", nu_squared);
     D_l + D_q_res + D_c_res
 }
 
@@ -230,10 +224,7 @@ pub fn compute_path_length_slice(xs_array: &Vec<[f64; 6]>) -> f64 {
     xs_array
         .iter()
         .zip(xs_array.iter().skip(1))
-        .map(|(x1, x2)| {
-            //println!("x1: {:?} | xs: {:?}", x1, x2);
-            (Vector2::new(x1[0], x1[1]) - Vector2::new(x2[0], x2[1])).norm()
-        })
+        .map(|(x1, x2)| (Vector2::new(x1[0], x1[1]) - Vector2::new(x2[0], x2[1])).norm())
         .sum()
 }
 
@@ -241,10 +232,7 @@ pub fn compute_path_length_nalgebra(xs_array: &Vec<Vector6<f64>>) -> f64 {
     xs_array
         .iter()
         .zip(xs_array.iter().skip(1))
-        .map(|(x1, x2)| {
-            //println!("x1: {:?} | xs: {:?}", x1, x2);
-            (Vector2::new(x1[0], x1[1]) - Vector2::new(x2[0], x2[1])).norm()
-        })
+        .map(|(x1, x2)| (Vector2::new(x1[0], x1[1]) - Vector2::new(x2[0], x2[1])).norm())
         .sum()
 }
 
@@ -286,12 +274,7 @@ pub fn draw_current_situation(
         .caption("ENC Hazards vs linestring", ("sans-serif", 40).into_font())
         .x_label_area_size(75)
         .y_label_area_size(75)
-        .build_cartesian_2d(
-            min_y_..max_y_,
-            min_x_..max_x_,
-            // bbox.min().y as f64..bbox.max().y as f64,
-            // bbox.min().x as f64..bbox.max().x as f64,
-        )?;
+        .build_cartesian_2d(min_y_..max_y_, min_x_..max_x_)?;
 
     chart
         .configure_mesh()
@@ -343,7 +326,6 @@ pub fn draw_multipolygon(
             .iter()
             .map(|p| (p.y as f64, p.x as f64))
             .collect();
-        // println!("poly_points: {:?}", poly_points);
         chart.draw_series(LineSeries::new(poly_points, color))?;
     }
     drawing_area.present()?;
@@ -363,7 +345,6 @@ pub fn draw_triangulation(
             .iter()
             .map(|p| (p.y as f64, p.x as f64))
             .collect();
-        // println!("poly_points: {:?}", poly_points);
         chart.draw_series(LineSeries::new(poly_points, color))?;
     }
     drawing_area.present()?;
@@ -380,7 +361,6 @@ pub fn draw_trajectory(
         .iter()
         .map(|xs| (xs[1] as f64, xs[0] as f64))
         .collect();
-    //println!("points: {:?}", points);
     chart.draw_series(LineSeries::new(points, color))?;
     drawing_area.present()?;
     Ok(())
@@ -480,7 +460,6 @@ pub fn draw_tree(
     if enc_data.is_empty() {
         bbox = bbox_from_corner_points(p_start, p_goal, 100.0, 100.0);
     }
-    // println!("Map bbox: {:?}", bbox);
     let mut chart = ChartBuilder::on(&drawing_area)
         .caption("Tree", ("sans-serif", 40).into_font())
         .x_label_area_size(50)
@@ -711,7 +690,6 @@ mod tests {
         let x = -3.055;
         let y = 2.4318;
         let _diff = wrap_angle_diff_to_pmpi(x, y);
-        //println!("diff: {:?}", diff);
         let diff1 =
             wrap_angle_diff_to_pmpi(-179.0 * consts::PI / 180.0, 179.0 * consts::PI / 180.0);
         assert_relative_eq!(diff1, 2.0 * consts::PI / 180.0, epsilon = 0.0001);

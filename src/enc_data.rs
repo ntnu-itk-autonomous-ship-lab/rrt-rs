@@ -73,7 +73,6 @@ impl ENCData {
             let polygon = self.transfer_polygon(py_poly)?;
             poly_vec.push(polygon.clone());
             weights_vec.push(geo::Area::unsigned_area(&polygon.clone()));
-            //println!("Area: {:?}", geo::Area::unsigned_area(&polygon));
         }
         self.safe_sea_triangulation = poly_vec;
         self.safe_sea_triangulation_weights = weights_vec;
@@ -202,7 +201,6 @@ impl ENCData {
     /// Calculate the distance from a point to the closest point on the ENC
     pub fn dist2point(&self, p: &Vector2<f64>) -> f64 {
         if self.is_empty() {
-            println!("ENCData is empty");
             return -1.0;
         }
         let point1 = Point::new(p[0], p[1]);

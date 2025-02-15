@@ -111,9 +111,6 @@ impl PQRRTStar {
         model: KinematicCSOGParams,
         params: PQRRTStarParams,
     ) -> Self {
-        // println!("PQRRT* parameters: {:?}", params);
-        // println!("PQRRT* model: {:?}", model);
-        // println!("PQRRT* LOS: {:?}", los);
         Self {
             c_best: std::f64::INFINITY,
             solutions: Vec::new(),
@@ -266,9 +263,7 @@ impl PQRRTStar {
         py: Python<'_>,
     ) -> PyResult<PyObject> {
         let start = Instant::now();
-        // println!("Ownship state: {:?}", ownship_state);
-        // println!("Goal state: {:?}", self.xs_goal);
-        // println!("U_d: {:?}", U_d);
+
         if !initialized {
             self.set_speed_reference(U_d)?;
             self.set_init_state(ownship_state)?;
@@ -321,12 +316,6 @@ impl PQRRTStar {
                 self.rewire(&z_new, &Z_near)?;
             }
             self.num_iter += 1;
-            // if self.num_iter % 5000 == 0 {
-            //     println!(
-            //         "Num iter: {} | Num nodes: {} | c_best: {}",
-            //         self.num_iter, self.num_nodes, self.c_best
-            //     );
-            // }
 
             if start.elapsed().as_secs() as f64 > self.params.max_time {
                 break;
@@ -385,10 +374,6 @@ impl PQRRTStar {
         node_dict.set_item("time", node_data.time)?;
         node_dict.set_item("id", node_id_int.clone())?;
         node_dict.set_item("parent_id", parent_id_int.clone())?;
-        // println!(
-        //     "Node ID: {} | Parent ID: {} | cost: {}",
-        //     node_id_int, parent_id_int, node_data.cost
-        // );
 
         *total_num_nodes += 1;
         list.append(node_dict)?;
@@ -416,12 +401,7 @@ impl PQRRTStar {
     pub fn add_solution(&mut self, z: &RRTNode, z_goal_attempt: &RRTNode) -> PyResult<()> {
         let z_goal_ = self.insert(&z_goal_attempt.clone(), &z)?;
         self.solutions.push(z_goal_.id.unwrap().clone());
-        // if z_goal_.cost < self.c_best {
-        //     println!(
-        //         "Solution Found! Num iter: {} | Num nodes: {} | new c_best: {} | prev c_best: {}",
-        //         self.num_iter, self.num_nodes, z_goal_.cost, self.c_best
-        //     );
-        // }
+
         self.c_best = self.c_best.min(z_goal_.cost);
         Ok(())
     }
@@ -495,39 +475,11 @@ impl PQRRTStar {
 
     // Prune state nodes from the solution to make the trajectory smoother and more optimal wrt distance
     fn optimize_solution(&mut self, soln: &mut RRTResult) -> PyResult<()> {
-        //soln.save_to_json()?;
         if soln.states.len() < 2 {
             soln.states = vec![];
             return Ok(());
         }
-        // let mut states: Vec<[f64; 6]> = vec![soln.states.last().unwrap().clone()];
-        // let mut idx: usize = soln.states.len() - 1;
-        // while idx > 0 {
-        //     for j in 0..idx {
-        //         let state_j = Vector6::from_vec(soln.states[j].clone().to_vec());
-        //         let state_idx = Vector6::from_vec(soln.states[idx].clone().to_vec());
-        //         let (xs_array, _, _, _, reached) = self.steering.steer(
-        //             &state_j,
-        //             &state_idx,
-        //             self.U_d,
-        //             self.params.steering_acceptance_radius,
-        //             self.params.step_size,
-        //             10.0 * self.params.max_steering_time,
-        //         );
-        //         let is_coll = self.is_collision_free(&xs_array);
-        //         if (is_coll && reached) || j == idx - 1 {
-        //             states.push(soln.states[j].clone());
-        //             idx = j;
-        //             break;
-        //         }
-        //     }
-        // }
-        // assert_eq!(
-        //     states.len() > 1,
-        //     true,
-        //     "Optimized solution has less than 2 states",
-        // );
-        // states.reverse();
+
         *soln = self.steer_through_waypoints(&soln.waypoints)?;
         Ok(())
     }
@@ -587,10 +539,7 @@ impl PQRRTStar {
                 .data()
                 .clone();
             self.add_solution(&z_parent, &z)?;
-            // println!(
-            //     "Goal reached! Num iter: {} | Num nodes: {} | c_best: {}",
-            //     self.num_iter, self.num_nodes, self.c_best
-            // );
+
             return Ok(true);
         }
         let mut z_goal_ = RRTNode::new(self.xs_goal.clone(), Vec::new(), Vec::new(), 0.0, 0.0, 0.0);
@@ -608,10 +557,6 @@ impl PQRRTStar {
         }
         let cost = z.cost + utils::compute_path_length_nalgebra(&xs_array);
         if cost >= self.c_best {
-            // println!(
-            //     "Attempted goal insertion | cost : {} | c_best : {}",
-            //     cost, self.c_best
-            // );
             return Ok(false);
         }
         z_goal_ = RRTNode::new(x_new, xs_array, u_array, cost, 0.0, z.time + t_new);
@@ -624,11 +569,9 @@ impl PQRRTStar {
     /// we need to keep track of the node id in both trees. This is done by setting the id of the node in the Tree
     pub fn insert(&mut self, z: &RRTNode, z_parent: &RRTNode) -> PyResult<RRTNode> {
         if z.id.is_some() {
-            // println!("Insert: Node already in tree");
             return Ok(z.clone());
         }
         if z_parent.id == z.id {
-            // println!("Insert: Attempted to insert node with same id as parent");
             return Ok(z.clone());
         }
         let z_parent_id = z_parent.clone().id.unwrap();
@@ -706,12 +649,6 @@ impl PQRRTStar {
                     && z_new_near.cost < z_near.cost
                 {
                     self.rtree.remove(z_near);
-                    // let p_near = Vector2::new(z_near.state[0], z_near.state[1]);
-                    // let p_new_near = Vector2::new(z_new_near.state[0], z_new_near.state[1]);
-                    // println!(
-                    //     "Distance z_near and z_new_near: {}",
-                    //     (p_near - p_new_near).norm()
-                    // );
                     self.transfer_node_data(&z_near_id, &z_new_near)?;
                     self.move_node(&z_near_id, &z_from.clone().id.unwrap())?;
                     let z_new_near = self
@@ -730,17 +667,6 @@ impl PQRRTStar {
                     {
                         self.c_best = z_new_near.cost;
                     }
-                    // println!(
-                    //     "Rewired! | Old cost: {} | New cost: {} | Num iter : {} | Num nodes : {} | c_best : {}", z_near.cost, z_new_near.cost,
-                    //     self.num_iter, self.num_nodes, self.c_best
-                    // );
-                    // utils::draw_current_situation(
-                    //     "current_situation.png",
-                    //     &xs_array.clone(),
-                    //     &self.bookkeeping_tree,
-                    //     &self.enc,
-                    // )
-                    // .unwrap();
                 }
             }
         }
@@ -773,18 +699,13 @@ impl PQRRTStar {
 
         if node_data.id.is_some() {
             self.rtree.remove(&node_data.clone());
-            // println!(
-            //     "Old cost: {} | New cost: {}",
-            //     node_data.cost,
-            //     parent_node_cost + path_length
-            // );
+
             node_data.cost = parent_node_cost + path_length;
             self.rtree.insert(node_data.clone());
         }
 
         if self.solutions.contains(&node_data.id.unwrap()) && node_data.cost < self.c_best {
             self.c_best = node_data.cost;
-            // println!("Rewired to solution! | new c_best : {}", self.c_best);
         }
         Ok(node_data.cost)
     }
@@ -806,7 +727,6 @@ impl PQRRTStar {
             let z = self.bookkeeping_tree.get(root_id).unwrap().data().clone();
             return Ok(vec![z]);
         }
-        // println!("NN radius: {}", ball_radius);
 
         // Extract all nodes within the ball radius, greater than min node dist unless the
         // angle difference between the two nodes is small enough
@@ -879,7 +799,6 @@ impl PQRRTStar {
                 Z_parents.push(z_ancestor_l);
             }
         }
-        // println!("Num ancestry nodes: {}", Z_parents.len());
         Ok(Z_parents)
     }
 
@@ -969,7 +888,6 @@ impl PQRRTStar {
             2.0 * self.params.steering_acceptance_radius,
             self.params.step_size,
         );
-        //assert_eq!(reached_last, true);
 
         let new_cost = utils::compute_path_length_nalgebra(
             &xs_array
@@ -1000,7 +918,6 @@ impl PQRRTStar {
                 z_prand.state + self.params.lambda_sample_adjustment * F_att.normalize();
             total_distance += self.params.lambda_sample_adjustment * F_att.normalize().norm();
         }
-        // println!("Total distance adjusted: {}", total_distance);
         Ok(z_prand)
     }
 
@@ -1009,10 +926,9 @@ impl PQRRTStar {
         let p_goal: Vector2<f64> = self.xs_goal.fixed_rows::<2>(0).into();
         // let mut map_bbox = self.enc.bbox.clone();
         let map_bbox = utils::bbox_from_corner_points(&p_start, &p_goal, 500.0, 500.0);
-        // println!("Map bbox: {:?}", map_bbox);
+
         loop {
             let p_rand = if !self.enc.safe_sea_triangulation.is_empty() {
-                // println!("Sampled from triangulation!");
                 utils::sample_from_triangulation(
                     &self.enc.safe_sea_triangulation,
                     &self.weighted_index_distribution,
@@ -1021,9 +937,7 @@ impl PQRRTStar {
             } else {
                 utils::sample_from_bbox(&map_bbox, &mut self.rng)
             };
-            // println!("Sampled: {:?}", p_rand);
             if !self.enc.inside_hazards(&p_rand) && self.enc.inside_bbox(&p_rand) {
-                // println!("Sampled outside hazard");
                 return Ok(RRTNode {
                     id: None,
                     state: Vector6::new(p_rand[0], p_rand[1], 0.0, 0.0, 0.0, 0.0),
@@ -1034,7 +948,6 @@ impl PQRRTStar {
                     time: 0.0,
                 });
             } else {
-                // println!("Sampled inside hazard");
             }
         }
     }
@@ -1081,7 +994,6 @@ impl PQRRTStar {
         let dim = 2;
         let n = self.rtree.size() as f64;
         let ball_radius = self.params.gamma * (n.ln() / n).powf(1.0 / dim as f64);
-        // println!("Ball radius: {} | num_nodes: {}", ball_radius, n);
         ball_radius
     }
 
@@ -1107,12 +1019,7 @@ impl PQRRTStar {
             },
         );
         self.optimize_solution(&mut opt_soln)?;
-        // println!(
-        //     "Extracted best solution: {:.2} | Number of nodes: {} | Tree size: {}",
-        //     opt_soln.cost,
-        //     opt_soln.states.len(),
-        //     self.num_nodes
-        // );
+
         Ok(opt_soln)
     }
 

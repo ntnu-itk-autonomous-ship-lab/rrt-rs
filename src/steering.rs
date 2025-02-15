@@ -150,9 +150,6 @@ impl FLSHController {
         let psi_d: f64 = refs.0;
         let psi_d_unwrapped = utils::unwrap_angle(self.psi_d_prev, psi_d);
         let psi_error: f64 = utils::wrap_angle_diff_to_pmpi(psi_d_unwrapped, psi_unwrapped);
-        // if (psi_d < 0.0 && psi > 0.0) || (psi_d > 0.0 && psi < 0.0) {
-        //     println!("psi_d={psi_d} | psi_d_unwrapped={psi_d_unwrapped} | psi={psi} | psi_unwrapped={psi_unwrapped} | psi_error={psi_error}");
-        // }
         self.psi_prev = psi;
         self.psi_d_prev = psi_d;
         if self.psi_error_int.abs() > self.max_psi_error_int {
@@ -196,12 +193,6 @@ impl FLSHController {
             model_params.Fy_limits[1] * model_params.l_r,
         );
 
-        // println!(
-        //     "tau: {:?} | psi_error: {:.2} | u_diff: {:.2}",
-        //     tau,
-        //     psi_error,
-        //     u_d - u
-        // );
         tau
     }
 }
@@ -303,10 +294,6 @@ impl LOSSteering<Telemetron> {
             + (waypoints.last().unwrap()[1] - xs_array.last().unwrap()[1]).powi(2))
         .sqrt();
         reached_last = dist2last_wp <= acceptance_radius;
-        // println!(
-        //     "acceptance_radius: {:.2} | d2last_wp: {:.2} | reached_last: {:?}",
-        //     radius, dist2last_wp, reached_last
-        // );
         (xs_array, u_array, refs_array, t_array, reached_last)
     }
 }
@@ -374,35 +361,14 @@ impl LOSSteering<KinematicCSOG> {
             let dist2wp = dist2wp_vec.norm();
             let segment_passed =
                 L_wp_seg.dot(&dist2wp_vec.normalize()) < f64::cos(utils::deg2rad(90.0));
-            // println!(
-            //     "chi_diff: {:.2} | d2wp: {:.2} | L.dot(d2wp): {:.2} | segment_passed: {:?}",
-            //     utils::rad2deg(utils::wrap_angle_diff_to_pmpi(refs.0, xs_current[2])),
-            //     dist2wp,
-            //     utils::rad2deg(L_wp_seg.dot(&dist2wp_vec.normalize())),
-            //     segment_passed
-            // );
             if (dist2wp <= acceptance_radius) || segment_passed {
                 wp_idx += 1;
             }
-
-            // if wp_idx == n_wps - 1 {
-            //     println!(
-            //         "chi_diff: {:.2} | d2wp: {:.2} | L.dot(d2wp): {:.2} | segment_passed: {:?}",
-            //         utils::rad2deg(utils::wrap_angle_diff_to_pmpi(refs.0, xs_current[2])),
-            //         dist2wp,
-            //         utils::rad2deg(L_wp_seg.dot(&dist2wp_vec.normalize())),
-            //         segment_passed
-            //     );
-            // }
         }
         let dist2last_wp = ((waypoints.last().unwrap()[0] - xs_array.last().unwrap()[0]).powi(2)
             + (waypoints.last().unwrap()[1] - xs_array.last().unwrap()[1]).powi(2))
         .sqrt();
         reached_last = dist2last_wp <= acceptance_radius;
-        // println!(
-        //     "acceptance_radius: {:.2} | d2last_wp: {:.2} | reached_last: {:?}",
-        //     acceptance_radius, dist2last_wp, reached_last
-        // );
         (xs_array, u_array, refs_array, t_array, reached_last)
     }
 }
@@ -433,7 +399,6 @@ impl Steering for LOSSteering<Telemetron> {
         let mut reached_goal = false;
         self.los_guidance.reset();
         self.flsh_controller.reset();
-        //println!("xs_start: {:?} | xs_goal: {:?}", xs_start, xs_goal);
         while time <= max_steering_time {
             let refs: (f64, f64) = self
                 .los_guidance
@@ -462,9 +427,6 @@ impl Steering for LOSSteering<Telemetron> {
                 L_wp_seg.dot(&dist2goal_vec.normalize()) < f64::cos(utils::deg2rad(90.0));
             if dist2goal <= acceptance_radius {
                 reached_goal = true;
-                // refs_array.push(refs);
-                // u_array.push(tau);
-                // t_array.push(time.clone());
                 break;
             }
 
@@ -472,7 +434,6 @@ impl Steering for LOSSteering<Telemetron> {
                 break; // Break if segment passed => failed to reach goal
             }
         }
-        //println!("xs_next: {:?} | time: {:.2}", xs_next, time);
         (xs_array, u_array, refs_array, t_array, reached_goal)
     }
 }
@@ -501,7 +462,6 @@ impl Steering for LOSSteering<KinematicCSOG> {
         let mut refs_array: Vec<(f64, f64)> = vec![];
         let mut xs_next = xs_start.clone();
         let mut reached_goal = false;
-        //println!("xs_start: {:?} | xs_goal: {:?}", xs_start, xs_goal);
         self.ship_model.reset();
         while time <= max_steering_time {
             let refs: (f64, f64) = self
@@ -525,9 +485,6 @@ impl Steering for LOSSteering<KinematicCSOG> {
                 L_wp_seg.dot(&dist2goal_vec.normalize()) < f64::cos(utils::deg2rad(90.0));
             if dist2goal <= acceptance_radius {
                 reached_goal = true;
-                // refs_array.push(refs);
-                // u_array.push(tau);
-                // t_array.push(time.clone());
                 break;
             }
 
@@ -535,7 +492,6 @@ impl Steering for LOSSteering<KinematicCSOG> {
                 break; // Break if segment passed => failed to reach goal
             }
         }
-        //println!("xs_next: {:?} | time: {:.2}", xs_next, time);
         (xs_array, u_array, refs_array, t_array, reached_goal)
     }
 }
@@ -625,13 +581,6 @@ impl Steering for DubinsSteering<KinematicCSOG> {
                 .collect::<Vec<Vector6<f64>>>();
             reached_last = false;
         }
-        // println!(
-        //     "xs_goal - xs_array_last: {:?}  | dist: {:.4}",
-        //     xs_goal - xs_array.last().unwrap(),
-        //     (Vector2::new(xs_goal[0], xs_goal[1])
-        //         - Vector2::new(xs_array.last().unwrap()[0], xs_array.last().unwrap()[1]))
-        //     .norm()
-        // );
         (xs_array, u_array, refs_array, t_array, reached_last)
     }
 }
