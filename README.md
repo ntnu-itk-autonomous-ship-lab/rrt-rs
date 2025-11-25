@@ -1,7 +1,7 @@
 # rrt-rs
 Rust library containing multiple Rapidly-exploring Random Tree variants for trajectory planning and behavior generation that were compared in [A Comparative Study of Rapidly-exploring Random Tree Algorithms Applied to Ship Trajectory Planning and Behavior Generation](https://link.springer.com/article/10.1007/s10846-025-02222-7).
 
-Wrapped for use with Python. Uses [PyO3](https://pyo3.rs/v0.19.2/) as interface, and [maturin](https://github.com/PyO3/maturin) for building the library as a Python package. Can be used with the [colav-simulator](https://github.com/NTNU-Autoship-Internal/colav_simulator) framework for generating obstacle ship trajectories.
+Wrapped for use with Python. Uses [PyO3](https://pyo3.rs/v0.19.2/) as interface, and [maturin](https://github.com/PyO3/maturin) for building the library as a Python package. Can be used with the [colav-simulator](https://github.com/NTNU-TTO/colav-simulator) framework for generating obstacle ship trajectories.
 
 [![platform](https://img.shields.io/badge/platform-linux-lightgrey)]()
 [![python version](https://img.shields.io/badge/python-3.10-blue)]()
@@ -29,7 +29,7 @@ If you are using `RRTs` for ship trajectory planning or behavior generation in y
 - shapely
 - numpy
 - seacharts: https://github.com/trymte/seacharts
-- colav_simulator: https://github.com/NTNU-Autoship-Internal/colav_simulator (for the examples)
+- colav_simulator: https://github.com/NTNU-TTO/colav-simulator (for the examples)
 
 ## Installation and usage in Python
 
