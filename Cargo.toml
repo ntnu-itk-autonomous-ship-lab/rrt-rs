@@ -30,6 +30,8 @@ rand_chacha = "0.3.1"
 plotters = "0.3.4"
 pyo3-built = "0.4"
 
+[dev-dependencies]
+pyo3 = { version = "0.20", features = ["auto-initialize"] } # Internal rust tests will fail with the extension-module feature enabled
 
 [profile.dev]
 opt-level = 3

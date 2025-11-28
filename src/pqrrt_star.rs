@@ -1037,142 +1037,141 @@ mod tests {
     #[test]
     #[allow(non_snake_case)]
     fn test_ancestry() -> PyResult<()> {
-        let mut rrt = PQRRTStar::py_new(
-            LOSGuidanceParams::new(),
-            KinematicCSOGParams::new(),
-            PQRRTStarParams {
-                max_nodes: 1000,
-                max_iter: 100000,
-                max_time: 300.0,
-                iter_between_direct_goal_growth: 100,
-                min_node_dist: 50.0,
-                goal_radius: 100.0,
-                step_size: 0.1,
-                min_steering_time: 3.0,
-                max_steering_time: 20.0,
-                steering_acceptance_radius: 5.0,
-                gamma: 200.0,
-                max_sample_adjustments: 10,
-                lambda_sample_adjustment: 0.1,
-                safe_distance: 25.0,
-                max_ancestry_level: 1,
-            },
-        );
-
-        let xs_start = [0.0, 0.0, 0.0, 5.0, 0.0, 0.0];
-        let xs_goal = [1000.0, 0.0, 0.0, 0.0, 0.0, 0.0];
         Python::with_gil(|py| -> PyResult<()> {
+            let mut rrt = PQRRTStar::py_new(
+                LOSGuidanceParams::new(),
+                KinematicCSOGParams::new(),
+                PQRRTStarParams {
+                    max_nodes: 1000,
+                    max_iter: 100000,
+                    max_time: 300.0,
+                    iter_between_direct_goal_growth: 100,
+                    min_node_dist: 50.0,
+                    goal_radius: 100.0,
+                    step_size: 0.1,
+                    min_steering_time: 3.0,
+                    max_steering_time: 20.0,
+                    steering_acceptance_radius: 5.0,
+                    gamma: 200.0,
+                    max_sample_adjustments: 10,
+                    lambda_sample_adjustment: 0.1,
+                    safe_distance: 25.0,
+                    max_ancestry_level: 1,
+                },
+            );
+
+            let xs_start = [0.0, 0.0, 0.0, 5.0, 0.0, 0.0];
+            let xs_goal = [1000.0, 0.0, 0.0, 0.0, 0.0, 0.0];
             let xs_start_pyany = xs_start.into_py(py);
             let xs_start_py = xs_start_pyany.as_ref(py).downcast::<PyList>().unwrap();
             rrt.set_init_state(&xs_start_py)?;
             let xs_goal_pyany = xs_goal.into_py(py);
             let xs_goal_py = xs_goal_pyany.as_ref(py).downcast::<PyList>().unwrap();
             rrt.set_goal_state(xs_goal_py)?;
+
+            let z_new = RRTNode {
+                id: None,
+                cost: 50.0,
+                d2land: 20.0,
+                state: Vector6::new(50.0, 0.0, 0.0, 5.0, 0.0, 0.0),
+                trajectory: Vec::new(),
+                controls: Vec::new(),
+                time: 20.0,
+            };
+            let mut Z_near = rrt.nearest_neighbors(&z_new)?;
+            let Z_an = rrt.ancestry(&Z_near.clone())?;
+            println!("z_new: {:?}", z_new);
+            println!("Z_near: {:?}", Z_near);
+            println!("Z_an: {:?}", Z_an);
+            Z_near.append(&mut Z_an.clone());
+            let (z_new, z_parent) = rrt.choose_parent(&z_new, &Z_near[0].clone(), &Z_near)?;
+            let _z_new_id = rrt.insert(&z_new, &z_parent)?;
+
+            let z_new = RRTNode {
+                id: None,
+                cost: 150.0,
+                d2land: 20.0,
+                state: Vector6::new(100.0, 50.0, 0.0, 5.0, 0.0, 0.0),
+                trajectory: Vec::new(),
+                controls: Vec::new(),
+                time: 20.0,
+            };
+            let mut Z_near = rrt.nearest_neighbors(&z_new)?;
+            let Z_an = rrt.ancestry(&Z_near.clone())?;
+            println!("z_new: {:?}", z_new);
+            println!("Z_near: {:?}", Z_near);
+            println!("Z_an: {:?}", Z_an);
+            Z_near.append(&mut Z_an.clone());
+            let (z_new, z_parent) = rrt.choose_parent(&z_new, &Z_near[0].clone(), &Z_near)?;
+            let _z_new_id = rrt.insert(&z_new, &z_parent)?;
+
+            let z_new = RRTNode {
+                id: None,
+                cost: 200.0,
+                d2land: 20.0,
+                state: Vector6::new(200.0, 0.0, 0.0, 5.0, 0.0, 0.0),
+                trajectory: Vec::new(),
+                controls: Vec::new(),
+                time: 20.0,
+            };
+            let mut Z_near = rrt.nearest_neighbors(&z_new)?;
+            let Z_an = rrt.ancestry(&Z_near.clone())?;
+            println!("z_new: {:?}", z_new);
+            println!("Z_near: {:?}", Z_near);
+            println!("Z_an: {:?}", Z_an);
+            Z_near.append(&mut Z_an.clone());
+            let (z_new, z_parent) = rrt.choose_parent(&z_new, &Z_near[0].clone(), &Z_near)?;
+            let _z_new_id = rrt.insert(&z_new, &z_parent)?;
+
+            let z_new = RRTNode {
+                id: None,
+                cost: 270.0,
+                d2land: 20.0,
+                state: Vector6::new(250.0, 20.0, 0.0, 5.0, 0.0, 0.0),
+                trajectory: Vec::new(),
+                controls: Vec::new(),
+                time: 20.0,
+            };
+            let mut Z_near = rrt.nearest_neighbors(&z_new)?;
+            let Z_an = rrt.ancestry(&Z_near.clone())?;
+            println!("z_new: {:?}", z_new);
+            println!("Z_near: {:?}", Z_near);
+            println!("Z_an: {:?}", Z_an);
+            Z_near.append(&mut Z_an.clone());
+            let (z_new, z_parent) = rrt.choose_parent(&z_new, &Z_near[0].clone(), &Z_near)?;
+            let _z_new_id = rrt.insert(&z_new, &z_parent)?;
+
+            let z_new = RRTNode {
+                id: None,
+                cost: 300.0,
+                d2land: 20.0,
+                state: Vector6::new(300.0, 0.0, 0.0, 5.0, 0.0, 0.0),
+                trajectory: Vec::new(),
+                controls: Vec::new(),
+                time: 20.0,
+            };
+            let mut Z_near = rrt.nearest_neighbors(&z_new)?;
+            let Z_an = rrt.ancestry(&Z_near.clone())?;
+            println!("z_new: {:?}", z_new);
+            println!("Z_near: {:?}", Z_near);
+            println!("Z_an: {:?}", Z_an);
+            Z_near.append(&mut Z_an.clone());
+            let (z_new, z_parent) = rrt.choose_parent(&z_new, &Z_near[0].clone(), &Z_near)?;
+            let _z_new_id = rrt.insert(&z_new, &z_parent)?;
+
+            // utils::draw_tree(
+            //     "tree.png",
+            //     &rrt.bookkeeping_tree,
+            //     &Vector2::new(xs_start[0], xs_start[1]),
+            //     &Vector2::new(xs_goal[0], xs_goal[1]),
+            //     None,
+            //     &rrt.enc,
+            // )
+            // .unwrap();
+            println!("done");
+
             Ok(())
-        })?;
-
-        let z_new = RRTNode {
-            id: None,
-            cost: 50.0,
-            d2land: 20.0,
-            state: Vector6::new(50.0, 0.0, 0.0, 5.0, 0.0, 0.0),
-            trajectory: Vec::new(),
-            controls: Vec::new(),
-            time: 20.0,
-        };
-        let mut Z_near = rrt.nearest_neighbors(&z_new)?;
-        let Z_an = rrt.ancestry(&Z_near.clone())?;
-        println!("z_new: {:?}", z_new);
-        println!("Z_near: {:?}", Z_near);
-        println!("Z_an: {:?}", Z_an);
-        Z_near.append(&mut Z_an.clone());
-        let (z_new, z_parent) = rrt.choose_parent(&z_new, &Z_near[0].clone(), &Z_near)?;
-        let _z_new_id = rrt.insert(&z_new, &z_parent)?;
-
-        let z_new = RRTNode {
-            id: None,
-            cost: 150.0,
-            d2land: 20.0,
-            state: Vector6::new(100.0, 50.0, 0.0, 5.0, 0.0, 0.0),
-            trajectory: Vec::new(),
-            controls: Vec::new(),
-            time: 20.0,
-        };
-        let mut Z_near = rrt.nearest_neighbors(&z_new)?;
-        let Z_an = rrt.ancestry(&Z_near.clone())?;
-        println!("z_new: {:?}", z_new);
-        println!("Z_near: {:?}", Z_near);
-        println!("Z_an: {:?}", Z_an);
-        Z_near.append(&mut Z_an.clone());
-        let (z_new, z_parent) = rrt.choose_parent(&z_new, &Z_near[0].clone(), &Z_near)?;
-        let _z_new_id = rrt.insert(&z_new, &z_parent)?;
-
-        let z_new = RRTNode {
-            id: None,
-            cost: 200.0,
-            d2land: 20.0,
-            state: Vector6::new(200.0, 0.0, 0.0, 5.0, 0.0, 0.0),
-            trajectory: Vec::new(),
-            controls: Vec::new(),
-            time: 20.0,
-        };
-        let mut Z_near = rrt.nearest_neighbors(&z_new)?;
-        let Z_an = rrt.ancestry(&Z_near.clone())?;
-        println!("z_new: {:?}", z_new);
-        println!("Z_near: {:?}", Z_near);
-        println!("Z_an: {:?}", Z_an);
-        Z_near.append(&mut Z_an.clone());
-        let (z_new, z_parent) = rrt.choose_parent(&z_new, &Z_near[0].clone(), &Z_near)?;
-        let _z_new_id = rrt.insert(&z_new, &z_parent)?;
-
-        let z_new = RRTNode {
-            id: None,
-            cost: 270.0,
-            d2land: 20.0,
-            state: Vector6::new(250.0, 20.0, 0.0, 5.0, 0.0, 0.0),
-            trajectory: Vec::new(),
-            controls: Vec::new(),
-            time: 20.0,
-        };
-        let mut Z_near = rrt.nearest_neighbors(&z_new)?;
-        let Z_an = rrt.ancestry(&Z_near.clone())?;
-        println!("z_new: {:?}", z_new);
-        println!("Z_near: {:?}", Z_near);
-        println!("Z_an: {:?}", Z_an);
-        Z_near.append(&mut Z_an.clone());
-        let (z_new, z_parent) = rrt.choose_parent(&z_new, &Z_near[0].clone(), &Z_near)?;
-        let _z_new_id = rrt.insert(&z_new, &z_parent)?;
-
-        let z_new = RRTNode {
-            id: None,
-            cost: 300.0,
-            d2land: 20.0,
-            state: Vector6::new(300.0, 0.0, 0.0, 5.0, 0.0, 0.0),
-            trajectory: Vec::new(),
-            controls: Vec::new(),
-            time: 20.0,
-        };
-        let mut Z_near = rrt.nearest_neighbors(&z_new)?;
-        let Z_an = rrt.ancestry(&Z_near.clone())?;
-        println!("z_new: {:?}", z_new);
-        println!("Z_near: {:?}", Z_near);
-        println!("Z_an: {:?}", Z_an);
-        Z_near.append(&mut Z_an.clone());
-        let (z_new, z_parent) = rrt.choose_parent(&z_new, &Z_near[0].clone(), &Z_near)?;
-        let _z_new_id = rrt.insert(&z_new, &z_parent)?;
-
-        // utils::draw_tree(
-        //     "tree.png",
-        //     &rrt.bookkeeping_tree,
-        //     &Vector2::new(xs_start[0], xs_start[1]),
-        //     &Vector2::new(xs_goal[0], xs_goal[1]),
-        //     None,
-        //     &rrt.enc,
-        // )
-        // .unwrap();
-        println!("done");
-
-        Ok(())
+        })
     }
 
     #[test]
