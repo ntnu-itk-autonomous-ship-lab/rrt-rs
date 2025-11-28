@@ -1,10 +1,4 @@
 //! # RRT* Library
-//! Implements two Rapidly-exploring Random Tree (RRT*) algorithms in Rust:
-//! - PQ-RRT* (Potential field Quick RRT*)
-//! - IRRT* (Informed RRT*)
-//! - RRT*
-//! - RRT
-//!
 //! ## Usage
 //! Intended for use through Python (pyo3) bindings. Relies on getting ENC data from python shapely objects.
 use pyo3::prelude::*;
@@ -21,7 +15,6 @@ pub mod rrt_star;
 
 /// The RRT* library in rust. Implements four RRT* algorithms:
 /// - PQ-RRT* (Potential field Quick RRT*)
-/// - Adaptive Informed RRT*
 /// - Informed RRT*
 /// - RRT*
 /// - RRT

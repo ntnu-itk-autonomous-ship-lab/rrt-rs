@@ -22,6 +22,7 @@ pub struct ENCData {
 }
 
 #[pymethods]
+
 impl ENCData {
     #[new]
     pub fn py_new() -> Self {
@@ -76,7 +77,7 @@ impl ENCData {
         }
         self.safe_sea_triangulation = poly_vec;
         self.safe_sea_triangulation_weights = weights_vec;
-        self.save_triangulation_to_json()?;
+        // self.save_triangulation_to_json()?;
         Ok(())
     }
 
