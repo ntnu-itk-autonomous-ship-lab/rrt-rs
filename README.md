@@ -27,7 +27,7 @@ If you are using `RRTs` for ship trajectory planning or behavior generation in y
 Install rustup on your computer: https://www.rust-lang.org/tools/install first, then
 
 ```bash
-uv sync --group test
+uv sync --group test # To get colav-simulator aswell
 uv run maturin develop --uv
 ```
 The rust library is now built and installed as a Python package.
