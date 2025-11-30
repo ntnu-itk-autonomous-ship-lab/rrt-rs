@@ -1,7 +1,7 @@
 //! # Steering
 //! Implements a simple way of steering a Ship from a startpoint to an endpoint, using a simple surge and heading controller for a 3DOF surface ship model as in Tengesdal et. al. 2021, with LOS guidance.
 //!
-use crate::model::{KinematicCSOG, KinematicCSOGParams, ShipModel, Telemetron, TelemetronParams};
+use crate::model::{KinematicCSOG, KinematicCSOGParams, ShipModel, Viknes, ViknesParams};
 use crate::utils;
 use dubins_paths::{DubinsPath, PosRot};
 use nalgebra::Vector6;
@@ -256,7 +256,7 @@ impl FLSCController {
         refs: &(f64, f64),
         xs: &Vector6<f64>,
         dt: f64,
-        model_params: &TelemetronParams,
+        model_params: &ViknesParams,
     ) -> Vector3<f64> {
         let chi: f64 = utils::wrap_angle_to_pmpi(xs[2]);
         let chi_unwrapped = utils::unwrap_angle(self.chi_prev, chi);
@@ -335,7 +335,7 @@ impl<M: ShipModel> LOSSteering<M> {
 }
 
 #[allow(non_snake_case)]
-impl LOSSteering<Telemetron> {
+impl LOSSteering<Viknes> {
     pub fn steer_through_waypoints(
         &mut self,
         xs_start: &Vector6<f64>,
@@ -522,7 +522,7 @@ impl LOSSteering<KinematicCSOG> {
 }
 
 #[allow(non_snake_case)]
-impl Steering for LOSSteering<Telemetron> {
+impl Steering for LOSSteering<Viknes> {
     fn steer(
         &mut self,
         xs_start: &Vector6<f64>,

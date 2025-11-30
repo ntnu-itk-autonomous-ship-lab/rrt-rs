@@ -1,6 +1,6 @@
 //! # Model
 //! Implements models for use with the RRT* variants, including among others
-//! a 3DOF Telemetron surface ship model as in Tengesdal et. al. 2021:
+//! a 3DOF Viknes surface ship model as in Tengesdal et. al. 2021:
 //!
 //! eta_dot = Rpsi(eta) * nu
 //! M * nu_dot + C(nu) * nu + (D_l(nu) + D_nl) * nu = tau
@@ -28,7 +28,7 @@ use std::f64::consts::PI;
 
 #[allow(non_snake_case)]
 #[derive(Debug, Clone, Copy)]
-pub struct TelemetronParams {
+pub struct ViknesParams {
     pub draft: f64,
     pub length: f64,
     pub width: f64,
@@ -46,7 +46,7 @@ pub struct TelemetronParams {
 }
 
 #[allow(non_snake_case)]
-impl TelemetronParams {
+impl ViknesParams {
     pub fn new() -> Self {
         let r_max = 15.0 * PI / 180.0;
         let M_inv = Matrix3::from_partial_diagonal(&[1.0 / 3980.0, 1.0 / 3980.0, 1.0 / 19703.0]);
@@ -108,18 +108,18 @@ pub trait ShipModel {
     fn params(&self) -> Self::Params;
 }
 
-pub struct Telemetron {
-    pub params: TelemetronParams,
+pub struct Viknes {
+    pub params: ViknesParams,
     pub n_x: usize,
     pub n_u: usize,
 }
 
 #[allow(non_snake_case)]
-impl ShipModel for Telemetron {
-    type Params = TelemetronParams;
+impl ShipModel for Viknes {
+    type Params = ViknesParams;
     fn new(_params: Self::Params) -> Self {
         Self {
-            params: TelemetronParams::new(),
+            params: ViknesParams::new(),
             n_x: 6,
             n_u: 3,
         }
