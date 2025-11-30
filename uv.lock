@@ -1130,7 +1130,7 @@ wheels = [
 
 [[package]]
 name = "rrt-star-lib"
-version = "1.0.0"
+version = "2.0.0"
 source = { editable = "." }
 dependencies = [
     { name = "matplotlib" },
@@ -1143,7 +1143,6 @@ dependencies = [
 [package.dev-dependencies]
 test = [
     { name = "colav-simulator" },
-    { name = "seacharts" },
 ]
 
 [package.metadata]
@@ -1155,10 +1154,7 @@ requires-dist = [
 ]
 
 [package.metadata.requires-dev]
-test = [
-    { name = "colav-simulator", git = "https://github.com/NTNU-TTO/colav-simulator.git?rev=a4ff7d7e731657894cff6e06477c82fe9e0cde56" },
-    { name = "seacharts", git = "https://github.com/trymte/seacharts.git?rev=6818e8abf845cfa0dfc6038c11a670da988ad531" },
-]
+test = [{ name = "colav-simulator", git = "https://github.com/NTNU-TTO/colav-simulator.git?rev=a4ff7d7e731657894cff6e06477c82fe9e0cde56" }]
 
 [[package]]
 name = "scikit-image"
