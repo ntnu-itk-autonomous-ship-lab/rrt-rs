@@ -24,7 +24,15 @@ If you are using `RRTs` for ship trajectory planning or behavior generation in y
 
 ## Installation and usage in Python
 
-Install rustup on your computer: https://www.rust-lang.org/tools/install first, then
+Install rustup on your computer: (<https://www.rust-lang.org/tools/install>):
+```bash
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+```
+
+Install `uv` (<https://docs.astral.sh/uv/getting-started/installation/>):
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
 
 ```bash
 uv sync --group test # To get colav-simulator aswell
