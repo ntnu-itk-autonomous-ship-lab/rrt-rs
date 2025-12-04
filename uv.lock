@@ -111,7 +111,7 @@ wheels = [
 [[package]]
 name = "colav-simulator"
 version = "1.0.0"
-source = { git = "https://github.com/NTNU-TTO/colav-simulator.git?rev=b9816bda5e2fb48a64721a9b3979b437dacfacaa#b9816bda5e2fb48a64721a9b3979b437dacfacaa" }
+source = { git = "https://github.com/NTNU-TTO/colav-simulator.git?rev=8e726aa015413608a4f1423918cd9a5e50912d94#8e726aa015413608a4f1423918cd9a5e50912d94" }
 dependencies = [
     { name = "cerberus" },
     { name = "dacite" },
@@ -1154,7 +1154,7 @@ requires-dist = [
 ]
 
 [package.metadata.requires-dev]
-test = [{ name = "colav-simulator", git = "https://github.com/NTNU-TTO/colav-simulator.git?rev=b9816bda5e2fb48a64721a9b3979b437dacfacaa" }]
+test = [{ name = "colav-simulator", git = "https://github.com/NTNU-TTO/colav-simulator.git?rev=8e726aa015413608a4f1423918cd9a5e50912d94" }]
 
 [[package]]
 name = "scikit-image"
