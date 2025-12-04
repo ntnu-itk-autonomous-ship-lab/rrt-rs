@@ -34,6 +34,7 @@ Install `uv` (<https://docs.astral.sh/uv/getting-started/installation/>):
 curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
+Install project:
 ```bash
 uv sync --group test # To get colav-simulator aswell
 uv run maturin develop --uv
